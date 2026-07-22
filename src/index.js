@@ -1,5 +1,5 @@
 // ============================================================
-// StudentNija AI Proxy v11.1 – Fixed Thinking Logic
+// StudentNija AI Proxy v11.2 – Thinking UI Fix
 // ============================================================
 
 const corsHeaders = {
@@ -18,7 +18,7 @@ const MAX_TEXT_LENGTH = 30000;
 const MAX_IMAGE_PROMPT_LENGTH = 2048;
 
 // ============================================================
-// MODEL CONFIGURATION – verified available models
+// MODEL CONFIGURATION
 // ============================================================
 
 const MODELS = {
@@ -26,7 +26,6 @@ const MODELS = {
     { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
     { provider: 'groq', model: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant' },
   ],
-
   think: [
     { provider: 'github', model: 'DeepSeek-R1', label: 'DeepSeek R1' },
     { provider: 'github', model: 'Phi-4', label: 'Phi-4 (Reasoning)' },
@@ -34,23 +33,17 @@ const MODELS = {
     { provider: 'gemini', model: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' },
     { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Fallback)' },
   ],
-
   expert: [
     { provider: 'gemini', model: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
     { provider: 'gemini', model: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' },
     { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
   ],
-
   vision: [
     { provider: 'gemini', model: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash Vision' },
     { provider: 'gemini', model: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite Vision' },
     { provider: 'github', model: 'gpt-4o-mini', label: 'GPT-4o Mini Vision' },
   ],
 };
-
-// ============================================================
-// IMAGE GENERATION MODELS (Cloudflare Workers AI)
-// ============================================================
 
 function getImageModels(env) {
   return [
@@ -77,7 +70,7 @@ export default {
       return jsonResponse({
         success: true,
         service: 'StudentNija AI Proxy',
-        version: '11.1',
+        version: '11.2',
         status: 'online',
         timestamp: new Date().toISOString(),
         capabilities: {
@@ -147,7 +140,7 @@ async function routeAI(body, env) {
 }
 
 // ============================================================
-// MODE HANDLERS – System prompts are now "final answer only"
+// MODE HANDLERS
 // ============================================================
 
 async function chatMode(body, env) {
@@ -155,10 +148,10 @@ async function chatMode(body, env) {
 }
 
 async function thinkMode(body, env) {
-  // We do NOT ask the model to include any summary; we'll generate a separate thinking object.
   const enhancedSystem = buildSystemPrompt(body?.system, `
 You are in StudentNija Think Mode. Provide a clear, accurate, and well‑reasoned final answer.
-Do not include any internal reasoning or summary in your response – only the final answer.
+If you need to show your reasoning, place it inside <think> tags.
+Do not include the reasoning outside those tags.
 `);
   const newBody = { ...body, system: enhancedSystem };
   return await executeFallbackChain(MODELS.think, newBody, env, { capability: 'thinking', thinking: true });
@@ -167,7 +160,7 @@ Do not include any internal reasoning or summary in your response – only the f
 async function expertMode(body, env) {
   const enhancedSystem = buildSystemPrompt(body?.system, `
 You are in StudentNija Expert Mode. Provide a deep, precise, and structured final answer.
-Do not include any reasoning or meta‑comments – only the final answer.
+Place any reasoning inside <think> tags.
 `);
   const newBody = { ...body, system: enhancedSystem };
   return await executeFallbackChain(MODELS.expert, newBody, env, { capability: 'expert', thinking: true });
@@ -176,14 +169,14 @@ Do not include any reasoning or meta‑comments – only the final answer.
 async function visionMode(body, env) {
   const enhancedSystem = buildSystemPrompt(body?.system, `
 You are in StudentNija Vision Mode. Analyze the visual content and provide a clear final answer.
-Do not include any reasoning or description of your process – only the final answer.
+Place any reasoning inside <think> tags.
 `);
   const newBody = { ...body, system: enhancedSystem };
   return await executeFallbackChain(MODELS.vision, newBody, env, { capability: 'vision', thinking: true });
 }
 
 // ============================================================
-// FALLBACK ENGINE – now returns a structured "thinking" object
+// FALLBACK ENGINE – now strips <think> and returns a thinking object
 // ============================================================
 
 async function executeFallbackChain(models, body, env, options = {}) {
@@ -197,21 +190,28 @@ async function executeFallbackChain(models, body, env, options = {}) {
       const result = await executeModel(entry, body, env, options);
       if (result && result.success) {
         const elapsed = Date.now() - startedAt;
-        // Build thinking object if required
-        let thinking = null;
+        const rawText = normalizeText(result.data?.text);
+        // Strip <think> tags
+        const { cleaned, thinking: thinkContent } = stripThinkTags(rawText);
+
+        // Build thinking object
+        let thinkingObj = null;
         if (options.thinking) {
-          thinking = buildThinkingObject({
-            userText: extractLatestUserText(body?.messages),
-            thoughtSummary: result.data?.thoughtSummary,
-            modelLabel: entry.label || entry.model,
-            elapsed,
-          });
+          const thoughtText = thinkContent || result.data?.thoughtSummary || generateFallbackSummary(extractLatestUserText(body?.messages));
+          const bullets = thoughtText.split(/\n+/).filter(s => s.trim().length > 0);
+          if (bullets.length === 0) bullets.push('Reasoning about the request.');
+          thinkingObj = {
+            title: `Thought for ${formatThoughtDuration(elapsed)}`,
+            bullets: bullets.slice(0, 6),
+            model: entry.label || entry.model,
+          };
         }
+
         return jsonResponse({
           success: true,
-          text: normalizeText(result.data?.text),
-          thinking,   // <-- new structured field
-          thoughtSummary: result.data?.thoughtSummary, // keep for compatibility
+          text: cleaned, // clean answer
+          thinking: thinkingObj,
+          thoughtSummary: thinkContent || result.data?.thoughtSummary || null, // keep for compatibility
           provider: entry.provider,
           model: entry.model,
           modelLabel: entry.label || entry.model,
@@ -237,48 +237,35 @@ async function executeFallbackChain(models, body, env, options = {}) {
 }
 
 // ============================================================
-// THINKING OBJECT BUILDER
+// HELPERS: Think tag stripping
 // ============================================================
 
-function buildThinkingObject({ userText, thoughtSummary, modelLabel, elapsed }) {
-  // Use the model's thoughtSummary if available (Gemini) or fallback to a generated summary.
-  const summaryText = thoughtSummary || generateFallbackSummary(userText);
-  // Split into bullets (by newline or by periods)
-  const bullets = summaryText.split(/\n+/).filter(s => s.trim().length > 0);
-  // If bullets are too few, fallback to a default list
-  let finalBullets = bullets.length > 0 ? bullets : [
-    `Understanding the request: "${truncate(userText || 'the question', 80)}"`,
-    'Analyzing the key concepts and verifying the approach.',
-    'Preparing a clear and accurate response.'
-  ];
-  // Ensure we have at least 2 bullets
-  if (finalBullets.length < 2) {
-    finalBullets = finalBullets.concat(['Checking for consistency and clarity.']);
+function stripThinkTags(text) {
+  if (typeof text !== 'string') return { cleaned: text, thinking: null };
+  const match = text.match(/<think>([\s\S]*?)<\/think>/);
+  if (match) {
+    const thinking = match[1].trim();
+    const cleaned = text.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+    return { cleaned, thinking };
   }
-  const title = `Thought for ${formatThoughtDuration(elapsed)}`;
-  return {
-    title,
-    bullets: finalBullets.slice(0, 6), // limit to 6 bullets
-    model: modelLabel || 'AI',
-  };
+  return { cleaned: text, thinking: null };
 }
 
 function generateFallbackSummary(userText) {
-  const text = userText || 'the user\'s question';
-  // Basic heuristics to generate a meaningful fallback summary
+  const text = userText || 'the request';
   if (/(calculate|solve|equation|math)/i.test(text)) {
-    return 'Breaking the problem into steps and verifying the calculation logic.';
+    return 'Breaking the problem into steps and verifying the calculation.';
   } else if (/(code|program|debug|javascript|python|html)/i.test(text)) {
-    return 'Identifying the requirements, checking constraints, and planning a robust solution.';
+    return 'Identifying requirements, checking constraints, and planning a solution.';
   } else if (/(study|exam|learn|school|subject|explain)/i.test(text)) {
-    return 'Identifying the learning goal and organising the explanation for clarity.';
+    return 'Identifying the learning goal and organising the explanation.';
   } else {
     return 'Understanding the user\'s intent and gathering the necessary context.';
   }
 }
 
 // ============================================================
-// MODEL EXECUTION (GROQ, GEMINI, GITHUB)
+// MODEL EXECUTION (same as before)
 // ============================================================
 
 async function executeModel(entry, body, env, options) {
@@ -351,7 +338,7 @@ async function callGeminiModel(model, body, env, options) {
   };
 }
 
-// ---------- GITHUB MODELS ----------
+// ---------- GITHUB ----------
 async function callGitHubModel(model, body, env, options) {
   if (!env.GITHUB_TOKEN) throw new Error('GITHUB_TOKEN missing');
   const messages = normalizeGitHubMessages(body?.messages || [], body?.system);
@@ -385,7 +372,7 @@ async function callGitHubModel(model, body, env, options) {
 }
 
 // ============================================================
-// IMAGE GENERATION (Cloudflare Workers AI)
+// IMAGE GENERATION (unchanged)
 // ============================================================
 
 async function generateImage(body, env) {
@@ -432,7 +419,6 @@ async function generateImage(body, env) {
   );
 }
 
-// Helper: run Workers AI with timeout
 async function runWorkersAIWithTimeout(ai, model, input, timeout) {
   let timer;
   const timeoutPromise = new Promise((_, reject) => {
@@ -445,7 +431,6 @@ async function runWorkersAIWithTimeout(ai, model, input, timeout) {
   }
 }
 
-// Helper: normalize image result to { bytes, contentType }
 async function normalizeImageResult(result) {
   if (!result) return null;
   if (result instanceof ArrayBuffer || result instanceof Uint8Array) {
@@ -463,7 +448,6 @@ async function normalizeImageResult(result) {
   if (result.data instanceof ArrayBuffer || result.data instanceof Uint8Array) {
     return { bytes: result.data, contentType: 'image/png' };
   }
-  // ReadableStream
   if (result.body && typeof result.body.getReader === 'function') {
     return { bytes: await streamToArrayBuffer(result.body), contentType: 'image/png' };
   }
@@ -474,7 +458,7 @@ async function normalizeImageResult(result) {
 }
 
 // ============================================================
-// WEB SEARCH (Tavily)
+// WEB SEARCH & URL FETCHING (unchanged)
 // ============================================================
 
 async function webSearch(body, env) {
@@ -514,10 +498,6 @@ async function webSearch(body, env) {
   return jsonResponse({ success: true, query, answer: data?.answer || null, results });
 }
 
-// ============================================================
-// URL FETCHING
-// ============================================================
-
 async function fetchWebPage(body) {
   const targetUrl = String(body?.url || '').trim();
   if (!targetUrl) return errorResponse('URL required.', 400);
@@ -551,7 +531,7 @@ async function fetchWebPage(body) {
 }
 
 // ============================================================
-// DIRECT PROXY ENDPOINTS
+// DIRECT PROXY ENDPOINTS (unchanged)
 // ============================================================
 
 async function proxyGroq(body, env) {
@@ -574,7 +554,7 @@ async function proxyGitHub(body, env) {
 }
 
 // ============================================================
-// UTILITY FUNCTIONS
+// UTILITY FUNCTIONS (unchanged)
 // ============================================================
 
 function normalizeMode(mode) {
@@ -703,7 +683,7 @@ function extractGeminiResponse(data) {
   return { text: text.trim(), thoughtSummary: thoughtParts.join('\n\n').trim() || null };
 }
 
-// ---------- Fallback thought summary for providers without built-in thinking ----------
+// ---------- Fallback thought summary ----------
 function createFallbackThoughtSummary(body, options = {}) {
   const userText = extractLatestUserText(body?.messages);
   const mode = options.capability || body?.mode || 'chat';
