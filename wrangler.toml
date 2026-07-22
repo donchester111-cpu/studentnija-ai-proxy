@@ -1,3 +1,65 @@
+# ============================================================
+# StudentNija AI Proxy – Cloudflare Worker Configuration
+# ============================================================
+
 name = "studentnija-proxy"
 main = "src/index.js"
 compatibility_date = "2026-07-21"
+
+# Optional: enable more recent JavaScript features
+compatibility_flags = ["nodejs_compat"]
+
+# --------------------------------------------
+# AI Binding (for image generation)
+# --------------------------------------------
+[ai]
+binding = "AI"
+
+# --------------------------------------------
+# Environment Variables (set as secrets via wrangler secret put)
+# --------------------------------------------
+[vars]
+# GROQ_API_KEY – get from https://console.groq.com
+# GEMINI_API_KEY – get from https://ai.google.dev/
+# GITHUB_TOKEN – personal access token with access to GitHub Models
+# TAVILY_API_KEY – get from https://tavily.com/ (optional, for web search)
+# IMAGE_MODEL_PRIMARY – optional override (default: @cf/black-forest-labs/flux-1-schnell)
+# IMAGE_MODEL_FALLBACK – optional
+# IMAGE_MODEL_FINAL – optional
+# GITHUB_MODELS_ENDPOINT – optional (default: https://models.inference.ai.azure.com/chat/completions)
+
+# Uncomment and set default values if you want to use variables instead of secrets
+# GROQ_API_KEY = "your-groq-key"
+# GEMINI_API_KEY = "your-gemini-key"
+# GITHUB_TOKEN = "your-github-token"
+# TAVILY_API_KEY = "your-tavily-key"
+
+# --------------------------------------------
+# Optional: KV Namespaces (if you add caching later)
+# --------------------------------------------
+# [[kv_namespaces]]
+# binding = "STUDENTNIJA_CACHE"
+# id = "your-kv-namespace-id"
+
+# --------------------------------------------
+# Optional: D1 Database (if you add persistence later)
+# --------------------------------------------
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "studentnija"
+# database_id = "your-database-id"
+
+# --------------------------------------------
+# Optional: Observability / Logging
+# --------------------------------------------
+# [observability]
+# enabled = true
+# logs = { enabled = true, retention_days = 7 }
+
+# --------------------------------------------
+# Deployment / Environment Overrides
+# --------------------------------------------
+# [env.production]
+# vars = { ENVIRONMENT = "production" }
+# [env.staging]
+# vars = { ENVIRONMENT = "staging" }
