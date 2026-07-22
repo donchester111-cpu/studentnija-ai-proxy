@@ -13,11 +13,11 @@ const FETCH_TIMEOUT = 20000;
 const IMAGE_TIMEOUT = 120000;
 
 const MAX_TEXT_LENGTH = 30000;
-const MAX_IMAGE_PROMPT_LENGTH = 4000;
+const MAX_IMAGE_PROMPT_LENGTH = 2048;
 
 /*
 ============================================================
-STUDENTNIJA AI PROXY v9.0
+STUDENTNIJA AI PROXY v10.0
 ============================================================
 
 FRONTEND ENDPOINTS
@@ -35,83 +35,13 @@ POST /generate-image
 POST /search
 POST /fetch-url
 
-GET  /health
+GET /health
 
 DIRECT PROVIDER ENDPOINTS
 
 POST /groq
 POST /gemini
 POST /github
-
-============================================================
-FRONTEND MODE ARCHITECTURE
-============================================================
-
-CHAT
-
-Fast everyday conversation.
-
-Primary:
-Groq Llama 3.3 70B
-
-Fallback:
-Groq Llama 3.1 8B Instant
-
-
-THINK
-
-Deep reasoning mode.
-
-Primary:
-GitHub DeepSeek R1 0528
-
-Fallbacks:
-GitHub OpenAI reasoning model
-GitHub Phi reasoning model
-Gemini thinking
-Groq Llama 3.3 70B
-
-
-EXPERT
-
-Advanced study and expert explanations.
-
-Primary:
-Gemini 2.5 Flash
-
-Fallback:
-Gemini 2.5 Flash-Lite
-
-Final fallback:
-Groq Llama 3.3 70B
-
-
-VISION
-
-Image/document understanding.
-
-Primary:
-Gemini 2.5 Flash
-
-Fallback:
-Gemini 2.5 Flash-Lite
-
-Final fallback:
-GitHub multimodal model
-
-
-IMAGE GENERATION
-
-Cloudflare Workers AI only.
-
-Primary:
-FLUX.1 Schnell
-
-Fallback:
-Environment-configured model
-
-Final fallback:
-Environment-configured model
 
 ============================================================
 */
@@ -227,7 +157,7 @@ const MODELS = {
 };
 
 /* ============================================================
-   IMAGE MODEL CONFIGURATION
+   IMAGE MODELS
 ============================================================ */
 
 function getImageModels(env) {
@@ -246,7 +176,7 @@ function getImageModels(env) {
 ============================================================ */
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         status: 204,
@@ -257,12 +187,6 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    /*
-    ========================================================
-    HEALTH
-    ========================================================
-    */
-
     if (
       path === '/health' &&
       request.method === 'GET'
@@ -272,7 +196,7 @@ export default {
 
         service: 'StudentNija AI Proxy',
 
-        version: '9.0',
+        version: '10.0',
 
         status: 'online',
 
@@ -451,6 +375,7 @@ export default {
                 '/expert',
                 '/vision',
                 '/image',
+                '/generate-image',
                 '/search',
                 '/fetch-url',
                 '/groq',
@@ -488,7 +413,7 @@ export default {
 };
 
 /* ============================================================
-   UNIVERSAL AI ROUTER
+   UNIVERSAL ROUTER
 ============================================================ */
 
 async function routeAI(
@@ -497,7 +422,7 @@ async function routeAI(
 ) {
   const mode =
     normalizeMode(
-      body.mode
+      body?.mode
     );
 
   switch (mode) {
@@ -529,7 +454,7 @@ async function routeAI(
 }
 
 /* ============================================================
-   CHAT MODE
+   CHAT
 ============================================================ */
 
 async function chatMode(
@@ -552,7 +477,7 @@ async function chatMode(
 }
 
 /* ============================================================
-   THINK MODE
+   THINK
 ============================================================ */
 
 async function thinkMode(
@@ -563,30 +488,28 @@ async function thinkMode(
     ...body,
 
     system: buildSystemPrompt(
-      body.system,
+      body?.system,
 
       `
 You are operating in StudentNija Think Mode.
 
-Think deeply before answering.
+Think carefully before answering.
 
-The user interface displays a user-facing thought summary.
+Provide a concise user-facing reasoning summary.
 
-Provide a concise reasoning summary that explains:
+The summary may explain:
 
-1. What the user is asking.
-2. What important concepts are being considered.
-3. What approach is being used.
-4. What should be checked before answering.
+- what the user is asking,
+- the important concepts involved,
+- the approach being used,
+- what needs to be checked.
 
-Do not reveal hidden private chain-of-thought,
+Do not reveal private hidden chain-of-thought,
 private internal tokens,
 or unrestricted internal reasoning.
 
-The thought summary must be concise,
-useful, and understandable to the user.
-
-Then provide the final answer normally.
+After the concise summary,
+provide the final answer normally.
 `
     ),
   };
@@ -607,7 +530,7 @@ Then provide the final answer normally.
 }
 
 /* ============================================================
-   EXPERT MODE
+   EXPERT
 ============================================================ */
 
 async function expertMode(
@@ -618,26 +541,26 @@ async function expertMode(
     ...body,
 
     system: buildSystemPrompt(
-      body.system,
+      body?.system,
 
       `
 You are operating in StudentNija Expert Mode.
 
-Provide a high-quality expert-level response.
+Provide an expert-level response.
 
 For academic questions:
 
 - explain concepts clearly,
-- break difficult ideas into steps,
+- break difficult ideas into logical steps,
 - provide useful examples,
 - compare alternatives when helpful,
-- identify uncertainty,
+- identify uncertainty honestly,
 - avoid inventing facts,
-- prioritize accuracy over unnecessary length.
+- prioritize accuracy.
 
-When appropriate, provide a concise user-facing reasoning summary.
+Do not reveal private hidden chain-of-thought.
 
-Do not reveal hidden private chain-of-thought.
+Provide a concise user-facing explanation of the approach when useful.
 
 Then provide the final answer normally.
 `
@@ -660,7 +583,7 @@ Then provide the final answer normally.
 }
 
 /* ============================================================
-   VISION MODE
+   VISION
 ============================================================ */
 
 async function visionMode(
@@ -671,18 +594,18 @@ async function visionMode(
     ...body,
 
     system: buildSystemPrompt(
-      body.system,
+      body?.system,
 
       `
 You are operating in StudentNija Vision Mode.
 
-Analyze the supplied images,
+Analyze supplied images,
 screenshots,
 documents,
 charts,
 diagrams,
 handwritten notes,
-and visual content carefully.
+and other visual content carefully.
 
 You may:
 
@@ -699,11 +622,9 @@ You may:
 
 Never claim to see content that is not present.
 
-Provide a concise user-facing analysis summary when useful.
+Do not reveal private hidden chain-of-thought.
 
-Do not reveal hidden private chain-of-thought.
-
-Then provide the final answer normally.
+Provide the final answer clearly.
 `
     ),
   };
@@ -776,9 +697,17 @@ async function executeFallbackChain(
           startedAt;
 
         return jsonResponse({
-          ...result.data,
-
           success: true,
+
+          text:
+            normalizeText(
+              result.data?.text
+            ),
+
+          thoughtSummary:
+            normalizeText(
+              result.data?.thoughtSummary
+            ),
 
           provider:
             entry.provider,
@@ -945,9 +874,9 @@ async function callGroqModel(
 
   const messages =
     normalizeOpenAIMessages(
-      body.messages || [],
+      body?.messages || [],
 
-      body.system
+      body?.system
     );
 
   const payload = {
@@ -956,12 +885,12 @@ async function callGroqModel(
     messages,
 
     temperature:
-      body.temperature ??
+      body?.temperature ??
       0.7,
 
     max_tokens:
-      body.max_tokens ??
-      body.maxTokens ??
+      body?.max_tokens ??
+      body?.maxTokens ??
       4000,
 
     stream: false,
@@ -1009,12 +938,18 @@ async function callGroqModel(
       data
     );
 
+  if (
+    !text
+  ) {
+    throw new Error(
+      'Groq returned an empty response.'
+    );
+  }
+
   return {
     success: true,
 
     data: {
-      response: data,
-
       text,
 
       thoughtSummary:
@@ -1052,10 +987,10 @@ async function callGeminiModel(
 
   const contents =
     convertToGeminiContents(
-      body.messages || [],
+      body?.messages || [],
 
-      body.files ||
-        body.images ||
+      body?.files ||
+        body?.images ||
         []
     );
 
@@ -1069,13 +1004,21 @@ async function callGeminiModel(
         item.parts.length
     );
 
+  if (
+    !cleanContents.length
+  ) {
+    throw new Error(
+      'Gemini received no valid content.'
+    );
+  }
+
   const requestBody = {
     contents:
       cleanContents,
   };
 
   if (
-    body.system
+    body?.system
   ) {
     requestBody.systemInstruction =
       {
@@ -1091,7 +1034,7 @@ async function callGeminiModel(
   }
 
   const generationConfig = {
-    ...(body.generationConfig ||
+    ...(body?.generationConfig ||
       {}),
   };
 
@@ -1105,7 +1048,7 @@ async function callGeminiModel(
 
         thinkingBudget:
           Number.isInteger(
-            body.thinkingBudget
+            body?.thinkingBudget
           )
             ? body.thinkingBudget
             : -1,
@@ -1165,12 +1108,18 @@ async function callGeminiModel(
       data
     );
 
+  if (
+    !extracted.text
+  ) {
+    throw new Error(
+      'Gemini returned an empty response.'
+    );
+  }
+
   return {
     success: true,
 
     data: {
-      response: data,
-
       text:
         extracted.text,
 
@@ -1212,9 +1161,9 @@ async function callGitHubModel(
 
   const messages =
     normalizeGitHubMessages(
-      body.messages || [],
+      body?.messages || [],
 
-      body.system
+      body?.system
     );
 
   const payload = {
@@ -1223,12 +1172,12 @@ async function callGitHubModel(
     messages,
 
     temperature:
-      body.temperature ??
+      body?.temperature ??
       0.7,
 
     max_tokens:
-      body.max_tokens ??
-      body.maxTokens ??
+      body?.max_tokens ??
+      body?.maxTokens ??
       4000,
   };
 
@@ -1277,16 +1226,24 @@ async function callGitHubModel(
   const data =
     await response.json();
 
+  const text =
+    extractOpenAIText(
+      data
+    );
+
+  if (
+    !text
+  ) {
+    throw new Error(
+      'GitHub Models returned an empty response.'
+    );
+  }
+
   return {
     success: true,
 
     data: {
-      response: data,
-
-      text:
-        extractOpenAIText(
-          data
-        ),
+      text,
 
       thoughtSummary:
         options.thinking
@@ -1301,7 +1258,7 @@ async function callGitHubModel(
 }
 
 /* ============================================================
-   DIRECT GROQ ENDPOINT
+   DIRECT GROQ
 ============================================================ */
 
 async function proxyGroq(
@@ -1310,23 +1267,36 @@ async function proxyGroq(
   env
 ) {
   const model =
-    body.model ||
+    body?.model ||
 
     'llama-3.3-70b-versatile';
 
-  return await executeDirectProvider(
-    'groq',
+  const result =
+    await callGroqModel(
+      model,
+
+      body,
+
+      env,
+
+      {}
+    );
+
+  return jsonResponse({
+    success: true,
+
+    text:
+      result.data.text,
+
+    provider:
+      'groq',
 
     model,
-
-    body,
-
-    env
-  );
+  });
 }
 
 /* ============================================================
-   DIRECT GEMINI ENDPOINT
+   DIRECT GEMINI
 ============================================================ */
 
 async function proxyGemini(
@@ -1335,23 +1305,43 @@ async function proxyGemini(
   env
 ) {
   const model =
-    body.model ||
+    body?.model ||
 
     'gemini-2.5-flash';
 
-  return await executeDirectProvider(
-    'gemini',
+  const result =
+    await callGeminiModel(
+      model,
+
+      body,
+
+      env,
+
+      {
+        thinking:
+          body?.thinking !==
+          false,
+      }
+    );
+
+  return jsonResponse({
+    success: true,
+
+    text:
+      result.data.text,
+
+    thoughtSummary:
+      result.data.thoughtSummary,
+
+    provider:
+      'gemini',
 
     model,
-
-    body,
-
-    env
-  );
+  });
 }
 
 /* ============================================================
-   DIRECT GITHUB ENDPOINT
+   DIRECT GITHUB
 ============================================================ */
 
 async function proxyGitHub(
@@ -1360,7 +1350,7 @@ async function proxyGitHub(
   env
 ) {
   const model =
-    body.model;
+    body?.model;
 
   if (
     !model
@@ -1372,107 +1362,25 @@ async function proxyGitHub(
     );
   }
 
-  return await executeDirectProvider(
-    'github',
+  const result =
+    await callGitHubModel(
+      model,
 
-    model,
+      body,
 
-    body,
+      env,
 
-    env
-  );
-}
-
-/* ============================================================
-   DIRECT PROVIDER EXECUTION
-============================================================ */
-
-async function executeDirectProvider(
-  provider,
-
-  model,
-
-  body,
-
-  env
-) {
-  let result;
-
-  switch (
-    provider
-  ) {
-    case 'groq':
-      result =
-        await callGroqModel(
-          model,
-
-          body,
-
-          env,
-
-          {
-            capability:
-              body.mode ||
-              'chat',
-          }
-        );
-
-      break;
-
-    case 'gemini':
-      result =
-        await callGeminiModel(
-          model,
-
-          body,
-
-          env,
-
-          {
-            capability:
-              body.mode ||
-              'expert',
-
-            thinking:
-              body.thinking !==
-              false,
-          }
-        );
-
-      break;
-
-    case 'github':
-      result =
-        await callGitHubModel(
-          model,
-
-          body,
-
-          env,
-
-          {
-            capability:
-              body.mode ||
-              'thinking',
-
-            thinking: true,
-          }
-        );
-
-      break;
-
-    default:
-      throw new Error(
-        'Unsupported provider.'
-      );
-  }
+      {}
+    );
 
   return jsonResponse({
-    ...result.data,
-
     success: true,
 
-    provider,
+    text:
+      result.data.text,
+
+    provider:
+      'github',
 
     model,
   });
@@ -1488,15 +1396,12 @@ async function generateImage(
   env
 ) {
   if (
-    !env.AI
+    !env.AI ||
+    typeof env.AI.run !==
+      'function'
   ) {
-    return jsonResponse(
-      {
-        success: false,
-
-        error:
-          'Image generation is unavailable because the Cloudflare AI binding is not configured.',
-      },
+    return errorResponse(
+      'Image generation is unavailable because the Cloudflare AI binding is not configured.',
 
       503
     );
@@ -1504,7 +1409,7 @@ async function generateImage(
 
   const prompt =
     String(
-      body.prompt ||
+      body?.prompt ||
         ''
     ).trim();
 
@@ -1557,7 +1462,7 @@ async function generateImage(
       const input = {
         prompt,
 
-        ...(body.options ||
+        ...(body?.options ||
           {}),
       };
 
@@ -1596,7 +1501,7 @@ async function generateImage(
 
             'Content-Type':
               normalized.contentType ||
-              'image/png',
+              'image/jpeg',
 
             'Cache-Control':
               'no-store',
@@ -1656,7 +1561,7 @@ async function generateImage(
 }
 
 /* ============================================================
-   CLOUDFLARE AI TIMEOUT
+   WORKERS AI TIMEOUT
 ============================================================ */
 
 async function runWorkersAIWithTimeout(
@@ -1706,7 +1611,7 @@ async function runWorkersAIWithTimeout(
 }
 
 /* ============================================================
-   IMAGE RESULT NORMALIZATION
+   IMAGE NORMALIZATION
 ============================================================ */
 
 async function normalizeImageResult(
@@ -1726,7 +1631,7 @@ async function normalizeImageResult(
         result,
 
       contentType:
-        'image/png',
+        'image/jpeg',
     };
   }
 
@@ -1738,7 +1643,7 @@ async function normalizeImageResult(
         result,
 
       contentType:
-        'image/png',
+        'image/jpeg',
     };
   }
 
@@ -1765,7 +1670,7 @@ async function normalizeImageResult(
         result.image,
 
       contentType:
-        'image/png',
+        'image/jpeg',
     };
   }
 
@@ -1777,7 +1682,7 @@ async function normalizeImageResult(
         result.image,
 
       contentType:
-        'image/png',
+        'image/jpeg',
     };
   }
 
@@ -1821,12 +1726,14 @@ async function normalizeImageResult(
   }
 
   if (
-    result instanceof ReadableStream
+    result.body &&
+    typeof result.body.getReader ===
+      'function'
   ) {
     return {
       bytes:
         await streamToArrayBuffer(
-          result
+          result.body
         ),
 
       contentType:
@@ -1835,12 +1742,13 @@ async function normalizeImageResult(
   }
 
   if (
-    result.body instanceof ReadableStream
+    typeof result.getReader ===
+      'function'
   ) {
     return {
       bytes:
         await streamToArrayBuffer(
-          result.body
+          result
         ),
 
       contentType:
@@ -1872,7 +1780,7 @@ async function webSearch(
 
   const query =
     String(
-      body.query ||
+      body?.query ||
         ''
     ).trim();
 
@@ -1898,7 +1806,7 @@ async function webSearch(
   }
 
   const searchDepth =
-    body.search_depth ===
+    body?.search_depth ===
     'advanced'
       ? 'advanced'
       : 'basic';
@@ -1907,7 +1815,7 @@ async function webSearch(
     Math.min(
       Math.max(
         Number(
-          body.max_results
+          body?.max_results
         ) || 5,
 
         1
@@ -1970,33 +1878,41 @@ async function webSearch(
 
   const results =
     Array.isArray(
-      data.results
+      data?.results
     )
       ? data.results.map(
           (item) => ({
             title:
-              item.title ||
-              '',
+              String(
+                item?.title ||
+                  ''
+              ),
 
             url:
-              item.url ||
-              '',
+              String(
+                item?.url ||
+                  ''
+              ),
 
             content:
-              item.content ||
-              '',
+              String(
+                item?.content ||
+                  ''
+              ),
 
             score:
-              item.score ||
-              0,
+              Number(
+                item?.score ||
+                  0
+              ),
 
             publishedDate:
-              item.published_date ||
+              item?.published_date ||
               null,
 
             source:
               getHostname(
-                item.url
+                item?.url
               ),
           })
         )
@@ -2008,7 +1924,7 @@ async function webSearch(
     query,
 
     answer:
-      data.answer ||
+      data?.answer ||
       null,
 
     results,
@@ -2024,7 +1940,7 @@ async function fetchWebPage(
 ) {
   const targetUrl =
     String(
-      body.url ||
+      body?.url ||
         ''
     ).trim();
 
@@ -2220,8 +2136,10 @@ function convertToGeminiContents(
         ) {
           parts.push({
             text:
-              part.text ||
-              '',
+              String(
+                part.text ||
+                  ''
+              ),
           });
         }
 
@@ -2295,7 +2213,7 @@ function convertToGeminiContents(
 }
 
 /* ============================================================
-   OPENAI/GITHUB MESSAGE NORMALIZATION
+   OPENAI MESSAGE NORMALIZATION
 ============================================================ */
 
 function normalizeOpenAIMessages(
@@ -2344,13 +2262,9 @@ function normalizeOpenAIMessages(
   return normalized;
 }
 
-/*
-GitHub/OpenAI multimodal message format.
-
-This preserves images instead of deleting them.
-
-This is important for the Vision fallback.
-*/
+/* ============================================================
+   GITHUB MESSAGE NORMALIZATION
+============================================================ */
 
 function normalizeGitHubMessages(
   messages = [],
@@ -2419,8 +2333,10 @@ function normalizeGitHubMessages(
             type: 'text',
 
             text:
-              part.text ||
-              '',
+              String(
+                part.text ||
+                  ''
+              ),
           });
         }
 
@@ -2483,8 +2399,10 @@ function normalizeMessageContent(
             part?.type ===
             'text'
           ) {
-            return part.text ||
-              '';
+            return String(
+              part.text ||
+                ''
+            );
           }
 
           return '';
@@ -2495,9 +2413,8 @@ function normalizeMessageContent(
       );
   }
 
-  return String(
-    content ||
-      ''
+  return normalizeText(
+    content
   );
 }
 
@@ -2536,7 +2453,7 @@ function extractGeminiResponse(
         parts
     ) {
       if (
-        typeof part.text !==
+        typeof part?.text !==
         'string'
       ) {
         continue;
@@ -2598,12 +2515,19 @@ function extractOpenAIText(
   ) {
     return content
       .map(
-        (part) =>
-          typeof part ===
-          'string'
-            ? part
-            : part?.text ||
+        (part) => {
+          if (
+            typeof part ===
+            'string'
+          ) {
+            return part;
+          }
+
+          return String(
+            part?.text ||
               ''
+          );
+        }
       )
       .join(
         ''
@@ -2615,7 +2539,7 @@ function extractOpenAIText(
 }
 
 /* ============================================================
-   USER-FACING THOUGHT SUMMARY
+   THOUGHT SUMMARY
 ============================================================ */
 
 function createFallbackThoughtSummary(
@@ -2625,12 +2549,12 @@ function createFallbackThoughtSummary(
 ) {
   const userText =
     extractLatestUserText(
-      body.messages
+      body?.messages
     );
 
   const mode =
     options.capability ||
-    body.mode ||
+    body?.mode ||
     'chat';
 
   const summary =
@@ -2685,7 +2609,7 @@ function createFallbackThoughtSummary(
 }
 
 /* ============================================================
-   SYSTEM PROMPT BUILDER
+   SYSTEM PROMPT
 ============================================================ */
 
 function buildSystemPrompt(
@@ -2755,7 +2679,7 @@ function normalizeMode(
 }
 
 /* ============================================================
-   TEXT EXTRACTION
+   LATEST USER TEXT
 ============================================================ */
 
 function extractLatestUserText(
@@ -2800,8 +2724,10 @@ function extractLatestUserText(
         )
         .map(
           (part) =>
-            part.text ||
-            ''
+            String(
+              part.text ||
+                ''
+            )
         )
         .join(
           ' '
@@ -2890,7 +2816,7 @@ function extractTitle(
 }
 
 /* ============================================================
-   URL
+   HOSTNAME
 ============================================================ */
 
 function getHostname(
@@ -2908,6 +2834,69 @@ function getHostname(
 /* ============================================================
    STRING HELPERS
 ============================================================ */
+
+function normalizeText(
+  value
+) {
+  if (
+    typeof value ===
+    'string'
+  ) {
+    return value.trim();
+  }
+
+  if (
+    value ===
+    null ||
+    value ===
+    undefined
+  ) {
+    return '';
+  }
+
+  if (
+    typeof value ===
+    'object'
+  ) {
+    if (
+      typeof value.text ===
+      'string'
+    ) {
+      return value.text.trim();
+    }
+
+    if (
+      typeof value.content ===
+      'string'
+    ) {
+      return value.content.trim();
+    }
+
+    if (
+      Array.isArray(
+        value.parts
+      )
+    ) {
+      return value.parts
+        .map(
+          (part) =>
+            typeof part ===
+            'string'
+              ? part
+              : part?.text ||
+                ''
+        )
+        .join('')
+        .trim();
+    }
+
+    return '';
+  }
+
+  return String(
+    value
+  ).trim();
+}
 
 function truncate(
   value,
@@ -3036,12 +3025,16 @@ async function streamToArrayBuffer(
       break;
     }
 
-    chunks.push(
+    if (
       value
-    );
+    ) {
+      chunks.push(
+        value
+      );
 
-    total +=
-      value.byteLength;
+      total +=
+        value.byteLength;
+    }
   }
 
   const result =
