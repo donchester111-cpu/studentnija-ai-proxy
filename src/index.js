@@ -1,3 +1,7 @@
+// ============================================================
+// StudentNija AI Proxy v11.1 – Fixed Thinking Logic
+// ============================================================
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -6,202 +10,76 @@ const corsHeaders = {
 };
 
 const MAX_REQUEST_SIZE = 8 * 1024 * 1024;
-
 const REQUEST_TIMEOUT = 60000;
 const SEARCH_TIMEOUT = 20000;
 const FETCH_TIMEOUT = 20000;
 const IMAGE_TIMEOUT = 120000;
-
 const MAX_TEXT_LENGTH = 30000;
 const MAX_IMAGE_PROMPT_LENGTH = 2048;
 
-/*
-============================================================
-STUDENTNIJA AI PROXY v10.0
-============================================================
-
-FRONTEND ENDPOINTS
-
-POST /ai
-
-POST /chat
-POST /think
-POST /expert
-POST /vision
-
-POST /image
-POST /generate-image
-
-POST /search
-POST /fetch-url
-
-GET /health
-
-DIRECT PROVIDER ENDPOINTS
-
-POST /groq
-POST /gemini
-POST /github
-
-============================================================
-*/
-
-/* ============================================================
-   MODEL CONFIGURATION
-============================================================ */
+// ============================================================
+// MODEL CONFIGURATION – verified available models
+// ============================================================
 
 const MODELS = {
   chat: [
-    {
-      provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
-      label: 'Llama 3.3 70B',
-    },
-
-    {
-      provider: 'groq',
-      model: 'llama-3.1-8b-instant',
-      label: 'Llama 3.1 8B Instant',
-    },
+    { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
+    { provider: 'groq', model: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant' },
   ],
 
   think: [
-    {
-      provider: 'github',
-      model: 'deepseek/DeepSeek-R1-0528',
-      label: 'DeepSeek R1 0528',
-    },
-
-    {
-      provider: 'github',
-      model: 'openai/o4-mini',
-      label: 'OpenAI o4-mini',
-    },
-
-    {
-      provider: 'github',
-      model: 'openai/o3',
-      label: 'OpenAI o3',
-    },
-
-    {
-      provider: 'github',
-      model: 'microsoft/Phi-4-reasoning',
-      label: 'Phi-4 Reasoning',
-    },
-
-    {
-      provider: 'github',
-      model: 'microsoft/Phi-4-mini-reasoning',
-      label: 'Phi-4 Mini Reasoning',
-    },
-
-    {
-      provider: 'gemini',
-      model: 'gemini-2.5-flash',
-      label: 'Gemini 2.5 Flash Thinking',
-    },
-
-    {
-      provider: 'gemini',
-      model: 'gemini-2.5-flash-lite',
-      label: 'Gemini 2.5 Flash-Lite Thinking',
-    },
-
-    {
-      provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
-      label: 'Llama 3.3 70B Fallback',
-    },
+    { provider: 'github', model: 'DeepSeek-R1', label: 'DeepSeek R1' },
+    { provider: 'github', model: 'Phi-4', label: 'Phi-4 (Reasoning)' },
+    { provider: 'gemini', model: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { provider: 'gemini', model: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' },
+    { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Fallback)' },
   ],
 
   expert: [
-    {
-      provider: 'gemini',
-      model: 'gemini-2.5-flash',
-      label: 'Gemini 2.5 Flash',
-    },
-
-    {
-      provider: 'gemini',
-      model: 'gemini-2.5-flash-lite',
-      label: 'Gemini 2.5 Flash-Lite',
-    },
-
-    {
-      provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
-      label: 'Llama 3.3 70B',
-    },
+    { provider: 'gemini', model: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { provider: 'gemini', model: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' },
+    { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
   ],
 
   vision: [
-    {
-      provider: 'gemini',
-      model: 'gemini-2.5-flash',
-      label: 'Gemini 2.5 Flash Vision',
-    },
-
-    {
-      provider: 'gemini',
-      model: 'gemini-2.5-flash-lite',
-      label: 'Gemini 2.5 Flash-Lite Vision',
-    },
-
-    {
-      provider: 'github',
-      model: 'openai/gpt-4o-mini',
-      label: 'GPT-4o Mini Vision',
-    },
+    { provider: 'gemini', model: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash Vision' },
+    { provider: 'gemini', model: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite Vision' },
+    { provider: 'github', model: 'gpt-4o-mini', label: 'GPT-4o Mini Vision' },
   ],
 };
 
-/* ============================================================
-   IMAGE MODELS
-============================================================ */
+// ============================================================
+// IMAGE GENERATION MODELS (Cloudflare Workers AI)
+// ============================================================
 
 function getImageModels(env) {
   return [
-    env.IMAGE_MODEL_PRIMARY ||
-      '@cf/black-forest-labs/flux-1-schnell',
-
-    env.IMAGE_MODEL_FALLBACK,
-
-    env.IMAGE_MODEL_FINAL,
+    env.IMAGE_MODEL_PRIMARY || '@cf/black-forest-labs/flux-1-schnell',
+    env.IMAGE_MODEL_FALLBACK || '@cf/lykon/dreamshaper-8-lcm',
+    env.IMAGE_MODEL_FINAL || '@cf/stabilityai/stable-diffusion-xl-base-1.0',
   ].filter(Boolean);
 }
 
-/* ============================================================
-   MAIN WORKER
-============================================================ */
+// ============================================================
+// MAIN WORKER
+// ============================================================
 
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        status: 204,
-        headers: corsHeaders,
-      });
+      return new Response(null, { status: 204, headers: corsHeaders });
     }
 
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (
-      path === '/health' &&
-      request.method === 'GET'
-    ) {
+    if (path === '/health' && request.method === 'GET') {
       return jsonResponse({
         success: true,
-
         service: 'StudentNija AI Proxy',
-
-        version: '10.0',
-
+        version: '11.1',
         status: 'online',
-
         timestamp: new Date().toISOString(),
-
         capabilities: {
           chat: true,
           think: true,
@@ -212,3094 +90,745 @@ export default {
           urlReading: true,
           fallbackRouting: true,
         },
-
-        endpoints: {
-          universal: '/ai',
-
-          chat: '/chat',
-          think: '/think',
-          expert: '/expert',
-          vision: '/vision',
-
-          image: '/image',
-
-          search: '/search',
-          fetchUrl: '/fetch-url',
-        },
-
-        modelArchitecture: {
-          chat: MODELS.chat,
-          think: MODELS.think,
-          expert: MODELS.expert,
-          vision: MODELS.vision,
-          image: getImageModels(env),
-        },
+        endpoints: ['/ai', '/chat', '/think', '/expert', '/vision', '/image', '/search', '/fetch-url', '/groq', '/gemini', '/github', '/health'],
       });
     }
 
     if (request.method !== 'POST') {
-      return jsonResponse(
-        {
-          success: false,
-
-          error:
-            'This endpoint only accepts POST requests.',
-        },
-
-        405
-      );
+      return jsonResponse({ success: false, error: 'Only POST requests are accepted.' }, 405);
     }
 
     let body;
-
     try {
-      const contentLength = Number(
-        request.headers.get('content-length') || 0
-      );
-
-      if (
-        contentLength >
-        MAX_REQUEST_SIZE
-      ) {
-        return jsonResponse(
-          {
-            success: false,
-
-            error:
-              'The request is too large.',
-          },
-
-          413
-        );
+      const contentLength = Number(request.headers.get('content-length') || 0);
+      if (contentLength > MAX_REQUEST_SIZE) {
+        return jsonResponse({ success: false, error: 'Request too large.' }, 413);
       }
-
       body = await request.json();
-    } catch (error) {
-      console.error(
-        'JSON parsing error:',
-        error
-      );
-
-      return jsonResponse(
-        {
-          success: false,
-
-          error:
-            'Invalid JSON request body.',
-        },
-
-        400
-      );
+    } catch {
+      return jsonResponse({ success: false, error: 'Invalid JSON body.' }, 400);
     }
 
     try {
       switch (path) {
-        case '/ai':
-          return await routeAI(
-            body,
-            env
-          );
-
-        case '/chat':
-          return await chatMode(
-            body,
-            env
-          );
-
-        case '/think':
-          return await thinkMode(
-            body,
-            env
-          );
-
-        case '/expert':
-          return await expertMode(
-            body,
-            env
-          );
-
-        case '/vision':
-          return await visionMode(
-            body,
-            env
-          );
-
+        case '/ai':           return await routeAI(body, env);
+        case '/chat':         return await chatMode(body, env);
+        case '/think':        return await thinkMode(body, env);
+        case '/expert':       return await expertMode(body, env);
+        case '/vision':       return await visionMode(body, env);
         case '/image':
-        case '/generate-image':
-          return await generateImage(
-            body,
-            env
-          );
-
-        case '/search':
-          return await webSearch(
-            body,
-            env
-          );
-
-        case '/fetch-url':
-          return await fetchWebPage(
-            body
-          );
-
-        case '/groq':
-          return await proxyGroq(
-            body,
-            env
-          );
-
-        case '/gemini':
-          return await proxyGemini(
-            body,
-            env
-          );
-
-        case '/github':
-          return await proxyGitHub(
-            body,
-            env
-          );
-
-        default:
-          return jsonResponse(
-            {
-              success: false,
-
-              error:
-                'Unknown endpoint.',
-
-              availableEndpoints: [
-                '/ai',
-                '/chat',
-                '/think',
-                '/expert',
-                '/vision',
-                '/image',
-                '/generate-image',
-                '/search',
-                '/fetch-url',
-                '/groq',
-                '/gemini',
-                '/github',
-                '/health',
-              ],
-            },
-
-            404
-          );
+        case '/generate-image': return await generateImage(body, env);
+        case '/search':       return await webSearch(body, env);
+        case '/fetch-url':    return await fetchWebPage(body);
+        case '/groq':         return await proxyGroq(body, env);
+        case '/gemini':       return await proxyGemini(body, env);
+        case '/github':       return await proxyGitHub(body, env);
+        default:              return jsonResponse({ success: false, error: 'Unknown endpoint.' }, 404);
       }
     } catch (error) {
-      console.error(
-        'Unhandled StudentNija error:',
-        error
-      );
-
-      return jsonResponse(
-        {
-          success: false,
-
-          error:
-            'StudentNija could not complete that request right now.',
-
-          message:
-            error?.message ||
-            'Unknown error.',
-        },
-
-        500
-      );
+      console.error('Unhandled error:', error);
+      return jsonResponse({ success: false, error: 'Internal server error.' }, 500);
     }
   },
 };
 
-/* ============================================================
-   UNIVERSAL ROUTER
-============================================================ */
+// ============================================================
+// UNIVERSAL ROUTER
+// ============================================================
 
-async function routeAI(
-  body,
-  env
-) {
-  const mode =
-    normalizeMode(
-      body?.mode
-    );
-
+async function routeAI(body, env) {
+  const mode = normalizeMode(body?.mode);
   switch (mode) {
-    case 'think':
-      return await thinkMode(
-        body,
-        env
-      );
-
-    case 'expert':
-      return await expertMode(
-        body,
-        env
-      );
-
-    case 'vision':
-      return await visionMode(
-        body,
-        env
-      );
-
-    case 'chat':
-    default:
-      return await chatMode(
-        body,
-        env
-      );
+    case 'think':   return await thinkMode(body, env);
+    case 'expert':  return await expertMode(body, env);
+    case 'vision':  return await visionMode(body, env);
+    default:        return await chatMode(body, env);
   }
 }
 
-/* ============================================================
-   CHAT
-============================================================ */
+// ============================================================
+// MODE HANDLERS – System prompts are now "final answer only"
+// ============================================================
 
-async function chatMode(
-  body,
-  env
-) {
-  return await executeFallbackChain(
-    MODELS.chat,
-
-    body,
-
-    env,
-
-    {
-      capability: 'chat',
-
-      thinking: false,
-    }
-  );
+async function chatMode(body, env) {
+  return await executeFallbackChain(MODELS.chat, body, env, { capability: 'chat', thinking: false });
 }
 
-/* ============================================================
-   THINK
-============================================================ */
-
-async function thinkMode(
-  body,
-  env
-) {
-  const normalizedBody = {
-    ...body,
-
-    system: buildSystemPrompt(
-      body?.system,
-
-      `
-You are operating in StudentNija Think Mode.
-
-Think carefully before answering.
-
-Provide a concise user-facing reasoning summary.
-
-The summary may explain:
-
-- what the user is asking,
-- the important concepts involved,
-- the approach being used,
-- what needs to be checked.
-
-Do not reveal private hidden chain-of-thought,
-private internal tokens,
-or unrestricted internal reasoning.
-
-After the concise summary,
-provide the final answer normally.
-`
-    ),
-  };
-
-  return await executeFallbackChain(
-    MODELS.think,
-
-    normalizedBody,
-
-    env,
-
-    {
-      capability: 'thinking',
-
-      thinking: true,
-    }
-  );
+async function thinkMode(body, env) {
+  // We do NOT ask the model to include any summary; we'll generate a separate thinking object.
+  const enhancedSystem = buildSystemPrompt(body?.system, `
+You are in StudentNija Think Mode. Provide a clear, accurate, and well‑reasoned final answer.
+Do not include any internal reasoning or summary in your response – only the final answer.
+`);
+  const newBody = { ...body, system: enhancedSystem };
+  return await executeFallbackChain(MODELS.think, newBody, env, { capability: 'thinking', thinking: true });
 }
 
-/* ============================================================
-   EXPERT
-============================================================ */
-
-async function expertMode(
-  body,
-  env
-) {
-  const normalizedBody = {
-    ...body,
-
-    system: buildSystemPrompt(
-      body?.system,
-
-      `
-You are operating in StudentNija Expert Mode.
-
-Provide an expert-level response.
-
-For academic questions:
-
-- explain concepts clearly,
-- break difficult ideas into logical steps,
-- provide useful examples,
-- compare alternatives when helpful,
-- identify uncertainty honestly,
-- avoid inventing facts,
-- prioritize accuracy.
-
-Do not reveal private hidden chain-of-thought.
-
-Provide a concise user-facing explanation of the approach when useful.
-
-Then provide the final answer normally.
-`
-    ),
-  };
-
-  return await executeFallbackChain(
-    MODELS.expert,
-
-    normalizedBody,
-
-    env,
-
-    {
-      capability: 'expert',
-
-      thinking: true,
-    }
-  );
+async function expertMode(body, env) {
+  const enhancedSystem = buildSystemPrompt(body?.system, `
+You are in StudentNija Expert Mode. Provide a deep, precise, and structured final answer.
+Do not include any reasoning or meta‑comments – only the final answer.
+`);
+  const newBody = { ...body, system: enhancedSystem };
+  return await executeFallbackChain(MODELS.expert, newBody, env, { capability: 'expert', thinking: true });
 }
 
-/* ============================================================
-   VISION
-============================================================ */
-
-async function visionMode(
-  body,
-  env
-) {
-  const normalizedBody = {
-    ...body,
-
-    system: buildSystemPrompt(
-      body?.system,
-
-      `
-You are operating in StudentNija Vision Mode.
-
-Analyze supplied images,
-screenshots,
-documents,
-charts,
-diagrams,
-handwritten notes,
-and other visual content carefully.
-
-You may:
-
-- describe visible content,
-- extract text,
-- analyze screenshots,
-- explain diagrams,
-- solve mathematics,
-- identify study topics,
-- summarize notes,
-- detect possible mistakes,
-- create study questions,
-- organize educational material.
-
-Never claim to see content that is not present.
-
-Do not reveal private hidden chain-of-thought.
-
-Provide the final answer clearly.
-`
-    ),
-  };
-
-  return await executeFallbackChain(
-    MODELS.vision,
-
-    normalizedBody,
-
-    env,
-
-    {
-      capability: 'vision',
-
-      thinking: true,
-    }
-  );
+async function visionMode(body, env) {
+  const enhancedSystem = buildSystemPrompt(body?.system, `
+You are in StudentNija Vision Mode. Analyze the visual content and provide a clear final answer.
+Do not include any reasoning or description of your process – only the final answer.
+`);
+  const newBody = { ...body, system: enhancedSystem };
+  return await executeFallbackChain(MODELS.vision, newBody, env, { capability: 'vision', thinking: true });
 }
 
-/* ============================================================
-   FALLBACK ENGINE
-============================================================ */
+// ============================================================
+// FALLBACK ENGINE – now returns a structured "thinking" object
+// ============================================================
 
-async function executeFallbackChain(
-  models,
-
-  body,
-
-  env,
-
-  options = {}
-) {
+async function executeFallbackChain(models, body, env, options = {}) {
   const failures = [];
+  const startedAt = Date.now();
 
-  const startedAt =
-    Date.now();
-
-  for (
-    let index = 0;
-
-    index < models.length;
-
-    index++
-  ) {
-    const entry =
-      models[index];
-
+  for (let i = 0; i < models.length; i++) {
+    const entry = models[i];
     try {
-      console.log(
-        `[StudentNija AI] Trying ${entry.provider}/${entry.model}`
-      );
-
-      const result =
-        await executeModel(
-          entry,
-
-          body,
-
-          env,
-
-          options
-        );
-
-      if (
-        result &&
-        result.success
-      ) {
-        const elapsed =
-          Date.now() -
-          startedAt;
-
+      console.log(`[StudentNija] Trying ${entry.provider}/${entry.model}`);
+      const result = await executeModel(entry, body, env, options);
+      if (result && result.success) {
+        const elapsed = Date.now() - startedAt;
+        // Build thinking object if required
+        let thinking = null;
+        if (options.thinking) {
+          thinking = buildThinkingObject({
+            userText: extractLatestUserText(body?.messages),
+            thoughtSummary: result.data?.thoughtSummary,
+            modelLabel: entry.label || entry.model,
+            elapsed,
+          });
+        }
         return jsonResponse({
           success: true,
-
-          text:
-            normalizeText(
-              result.data?.text
-            ),
-
-          thoughtSummary:
-            normalizeText(
-              result.data?.thoughtSummary
-            ),
-
-          provider:
-            entry.provider,
-
-          model:
-            entry.model,
-
-          modelLabel:
-            entry.label ||
-            entry.model,
-
-          mode:
-            options.capability ||
-            'chat',
-
-          fallbackUsed:
-            index > 0,
-
-          fallbackPosition:
-            index + 1,
-
-          thoughtDuration:
-            options.thinking
-              ? formatThoughtDuration(
-                  elapsed
-                )
-              : null,
-
-          fallbackAttempts:
-            index,
-
-          failures:
-            failures.length
-              ? failures
-              : undefined,
+          text: normalizeText(result.data?.text),
+          thinking,   // <-- new structured field
+          thoughtSummary: result.data?.thoughtSummary, // keep for compatibility
+          provider: entry.provider,
+          model: entry.model,
+          modelLabel: entry.label || entry.model,
+          mode: options.capability || 'chat',
+          fallbackUsed: i > 0,
+          fallbackPosition: i + 1,
+          thoughtDuration: options.thinking ? formatThoughtDuration(elapsed) : null,
+          fallbackAttempts: i,
+          failures: failures.length ? failures : undefined,
         });
       }
-
-      failures.push({
-        provider:
-          entry.provider,
-
-        model:
-          entry.model,
-
-        reason:
-          'Unsuccessful response',
-      });
+      failures.push({ provider: entry.provider, model: entry.model, reason: 'Unsuccessful response' });
     } catch (error) {
-      console.warn(
-        `[StudentNija fallback] ${entry.provider}/${entry.model} failed:`,
-
-        error?.message ||
-          error
-      );
-
-      failures.push({
-        provider:
-          entry.provider,
-
-        model:
-          entry.model,
-
-        reason:
-          classifyFailure(
-            error
-          ),
-      });
+      console.warn(`[StudentNija fallback] ${entry.provider}/${entry.model} failed:`, error?.message || error);
+      failures.push({ provider: entry.provider, model: entry.model, reason: classifyFailure(error) });
     }
   }
 
   return jsonResponse(
-    {
-      success: false,
-
-      error:
-        'StudentNija could not get an AI response right now.',
-
-      fallbackExhausted: true,
-
-      failures,
-    },
-
+    { success: false, error: 'All AI models are currently unavailable.', fallbackExhausted: true, failures },
     503
   );
 }
 
-/* ============================================================
-   MODEL EXECUTION
-============================================================ */
+// ============================================================
+// THINKING OBJECT BUILDER
+// ============================================================
 
-async function executeModel(
-  entry,
+function buildThinkingObject({ userText, thoughtSummary, modelLabel, elapsed }) {
+  // Use the model's thoughtSummary if available (Gemini) or fallback to a generated summary.
+  const summaryText = thoughtSummary || generateFallbackSummary(userText);
+  // Split into bullets (by newline or by periods)
+  const bullets = summaryText.split(/\n+/).filter(s => s.trim().length > 0);
+  // If bullets are too few, fallback to a default list
+  let finalBullets = bullets.length > 0 ? bullets : [
+    `Understanding the request: "${truncate(userText || 'the question', 80)}"`,
+    'Analyzing the key concepts and verifying the approach.',
+    'Preparing a clear and accurate response.'
+  ];
+  // Ensure we have at least 2 bullets
+  if (finalBullets.length < 2) {
+    finalBullets = finalBullets.concat(['Checking for consistency and clarity.']);
+  }
+  const title = `Thought for ${formatThoughtDuration(elapsed)}`;
+  return {
+    title,
+    bullets: finalBullets.slice(0, 6), // limit to 6 bullets
+    model: modelLabel || 'AI',
+  };
+}
 
-  body,
-
-  env,
-
-  options
-) {
-  switch (
-    entry.provider
-  ) {
-    case 'groq':
-      return await callGroqModel(
-        entry.model,
-
-        body,
-
-        env,
-
-        options
-      );
-
-    case 'gemini':
-      return await callGeminiModel(
-        entry.model,
-
-        body,
-
-        env,
-
-        options
-      );
-
-    case 'github':
-      return await callGitHubModel(
-        entry.model,
-
-        body,
-
-        env,
-
-        options
-      );
-
-    default:
-      throw new Error(
-        `Unsupported provider: ${entry.provider}`
-      );
+function generateFallbackSummary(userText) {
+  const text = userText || 'the user\'s question';
+  // Basic heuristics to generate a meaningful fallback summary
+  if (/(calculate|solve|equation|math)/i.test(text)) {
+    return 'Breaking the problem into steps and verifying the calculation logic.';
+  } else if (/(code|program|debug|javascript|python|html)/i.test(text)) {
+    return 'Identifying the requirements, checking constraints, and planning a robust solution.';
+  } else if (/(study|exam|learn|school|subject|explain)/i.test(text)) {
+    return 'Identifying the learning goal and organising the explanation for clarity.';
+  } else {
+    return 'Understanding the user\'s intent and gathering the necessary context.';
   }
 }
 
-/* ============================================================
-   GROQ
-============================================================ */
+// ============================================================
+// MODEL EXECUTION (GROQ, GEMINI, GITHUB)
+// ============================================================
 
-async function callGroqModel(
-  model,
-
-  body,
-
-  env,
-
-  options = {}
-) {
-  if (
-    !env.GROQ_API_KEY
-  ) {
-    throw new Error(
-      'GROQ_API_KEY is not configured.'
-    );
+async function executeModel(entry, body, env, options) {
+  switch (entry.provider) {
+    case 'groq':   return await callGroqModel(entry.model, body, env, options);
+    case 'gemini': return await callGeminiModel(entry.model, body, env, options);
+    case 'github': return await callGitHubModel(entry.model, body, env, options);
+    default: throw new Error(`Unknown provider: ${entry.provider}`);
   }
+}
 
-  const messages =
-    normalizeOpenAIMessages(
-      body?.messages || [],
-
-      body?.system
-    );
-
+// ---------- GROQ ----------
+async function callGroqModel(model, body, env, options) {
+  if (!env.GROQ_API_KEY) throw new Error('GROQ_API_KEY missing');
+  const messages = normalizeOpenAIMessages(body?.messages || [], body?.system);
   const payload = {
     model,
-
     messages,
-
-    temperature:
-      body?.temperature ??
-      0.7,
-
-    max_tokens:
-      body?.max_tokens ??
-      body?.maxTokens ??
-      4000,
-
+    temperature: body?.temperature ?? 0.7,
+    max_tokens: body?.max_tokens ?? body?.maxTokens ?? 4000,
     stream: false,
   };
-
-  const response =
-    await fetchWithTimeout(
-      'https://api.groq.com/openai/v1/chat/completions',
-
-      {
-        method: 'POST',
-
-        headers: {
-          Authorization:
-            `Bearer ${env.GROQ_API_KEY}`,
-
-          'Content-Type':
-            'application/json',
-        },
-
-        body:
-          JSON.stringify(
-            payload
-          ),
-      },
-
-      REQUEST_TIMEOUT
-    );
-
-  if (
-    !response.ok
-  ) {
-    throw await createProviderError(
-      response,
-
-      'Groq'
-    );
-  }
-
-  const data =
-    await response.json();
-
-  const text =
-    extractOpenAIText(
-      data
-    );
-
-  if (
-    !text
-  ) {
-    throw new Error(
-      'Groq returned an empty response.'
-    );
-  }
-
+  const response = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }, REQUEST_TIMEOUT);
+  if (!response.ok) throw await createProviderError(response, 'Groq');
+  const data = await response.json();
+  const text = extractOpenAIText(data);
+  if (!text) throw new Error('Empty Groq response');
   return {
     success: true,
-
     data: {
       text,
-
-      thoughtSummary:
-        options.thinking
-          ? createFallbackThoughtSummary(
-              body,
-
-              options
-            )
-          : null,
+      thoughtSummary: options.thinking ? createFallbackThoughtSummary(body, options) : null,
     },
   };
 }
 
-/* ============================================================
-   GEMINI
-============================================================ */
-
-async function callGeminiModel(
-  model,
-
-  body,
-
-  env,
-
-  options = {}
-) {
-  if (
-    !env.GEMINI_API_KEY
-  ) {
-    throw new Error(
-      'GEMINI_API_KEY is not configured.'
-    );
-  }
-
-  const contents =
-    convertToGeminiContents(
-      body?.messages || [],
-
-      body?.files ||
-        body?.images ||
-        []
-    );
-
-  const cleanContents =
-    contents.filter(
-      (item) =>
-        item &&
-        Array.isArray(
-          item.parts
-        ) &&
-        item.parts.length
-    );
-
-  if (
-    !cleanContents.length
-  ) {
-    throw new Error(
-      'Gemini received no valid content.'
-    );
-  }
-
+// ---------- GEMINI ----------
+async function callGeminiModel(model, body, env, options) {
+  if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
+  const contents = convertToGeminiContents(body?.messages || [], body?.files || []);
   const requestBody = {
-    contents:
-      cleanContents,
+    contents: contents.filter(c => c && Array.isArray(c.parts) && c.parts.length),
   };
-
-  if (
-    body?.system
-  ) {
-    requestBody.systemInstruction =
-      {
-        parts: [
-          {
-            text:
-              String(
-                body.system
-              ),
-          },
-        ],
-      };
+  if (body?.system) requestBody.systemInstruction = { parts: [{ text: String(body.system) }] };
+  const generationConfig = { ...(body?.generationConfig || {}) };
+  if (options.thinking) {
+    generationConfig.thinkingConfig = { thinkingBudget: Number.isInteger(body?.thinkingBudget) ? body.thinkingBudget : -1 };
   }
-
-  const generationConfig = {
-    ...(body?.generationConfig ||
-      {}),
-  };
-
-  if (
-    options.thinking
-  ) {
-    generationConfig.thinkingConfig =
-      {
-        ...(generationConfig.thinkingConfig ||
-          {}),
-
-        thinkingBudget:
-          Number.isInteger(
-            body?.thinkingBudget
-          )
-            ? body.thinkingBudget
-            : -1,
-      };
-  }
-
-  requestBody.generationConfig =
-    generationConfig;
-
-  const endpoint =
-    'https://generativelanguage.googleapis.com/v1beta/models/' +
-
-    `${encodeURIComponent(
-      model
-    )}:generateContent` +
-
-    `?key=${encodeURIComponent(
-      env.GEMINI_API_KEY
-    )}`;
-
-  const response =
-    await fetchWithTimeout(
-      endpoint,
-
-      {
-        method: 'POST',
-
-        headers: {
-          'Content-Type':
-            'application/json',
-        },
-
-        body:
-          JSON.stringify(
-            requestBody
-          ),
-      },
-
-      REQUEST_TIMEOUT
-    );
-
-  if (
-    !response.ok
-  ) {
-    throw await createProviderError(
-      response,
-
-      'Gemini'
-    );
-  }
-
-  const data =
-    await response.json();
-
-  const extracted =
-    extractGeminiResponse(
-      data
-    );
-
-  if (
-    !extracted.text
-  ) {
-    throw new Error(
-      'Gemini returned an empty response.'
-    );
-  }
-
+  requestBody.generationConfig = generationConfig;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody),
+  }, REQUEST_TIMEOUT);
+  if (!response.ok) throw await createProviderError(response, 'Gemini');
+  const data = await response.json();
+  const extracted = extractGeminiResponse(data);
+  if (!extracted.text) throw new Error('Empty Gemini response');
   return {
     success: true,
-
     data: {
-      text:
-        extracted.text,
-
-      thoughtSummary:
-        extracted.thoughtSummary ||
-        (
-          options.thinking
-            ? createFallbackThoughtSummary(
-                body,
-
-                options
-              )
-            : null
-        ),
+      text: extracted.text,
+      thoughtSummary: extracted.thoughtSummary || (options.thinking ? createFallbackThoughtSummary(body, options) : null),
     },
   };
 }
 
-/* ============================================================
-   GITHUB MODELS
-============================================================ */
-
-async function callGitHubModel(
-  model,
-
-  body,
-
-  env,
-
-  options = {}
-) {
-  if (
-    !env.GITHUB_TOKEN
-  ) {
-    throw new Error(
-      'GITHUB_TOKEN is not configured.'
-    );
-  }
-
-  const messages =
-    normalizeGitHubMessages(
-      body?.messages || [],
-
-      body?.system
-    );
-
+// ---------- GITHUB MODELS ----------
+async function callGitHubModel(model, body, env, options) {
+  if (!env.GITHUB_TOKEN) throw new Error('GITHUB_TOKEN missing');
+  const messages = normalizeGitHubMessages(body?.messages || [], body?.system);
   const payload = {
     model,
-
     messages,
-
-    temperature:
-      body?.temperature ??
-      0.7,
-
-    max_tokens:
-      body?.max_tokens ??
-      body?.maxTokens ??
-      4000,
+    temperature: body?.temperature ?? 0.7,
+    max_tokens: body?.max_tokens ?? body?.maxTokens ?? 4000,
   };
-
-  const endpoint =
-    env.GITHUB_MODELS_ENDPOINT ||
-
-    'https://models.inference.ai.azure.com/chat/completions';
-
-  const response =
-    await fetchWithTimeout(
-      endpoint,
-
-      {
-        method: 'POST',
-
-        headers: {
-          Authorization:
-            `Bearer ${env.GITHUB_TOKEN}`,
-
-          'Content-Type':
-            'application/json',
-
-          Accept:
-            'application/json',
-        },
-
-        body:
-          JSON.stringify(
-            payload
-          ),
-      },
-
-      REQUEST_TIMEOUT
-    );
-
-  if (
-    !response.ok
-  ) {
-    throw await createProviderError(
-      response,
-
-      'GitHub Models'
-    );
-  }
-
-  const data =
-    await response.json();
-
-  const text =
-    extractOpenAIText(
-      data
-    );
-
-  if (
-    !text
-  ) {
-    throw new Error(
-      'GitHub Models returned an empty response.'
-    );
-  }
-
+  const endpoint = env.GITHUB_MODELS_ENDPOINT || 'https://models.inference.ai.azure.com/chat/completions';
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }, REQUEST_TIMEOUT);
+  if (!response.ok) throw await createProviderError(response, 'GitHub Models');
+  const data = await response.json();
+  const text = extractOpenAIText(data);
+  if (!text) throw new Error('Empty GitHub response');
   return {
     success: true,
-
     data: {
       text,
-
-      thoughtSummary:
-        options.thinking
-          ? createFallbackThoughtSummary(
-              body,
-
-              options
-            )
-          : null,
+      thoughtSummary: options.thinking ? createFallbackThoughtSummary(body, options) : null,
     },
   };
 }
 
-/* ============================================================
-   DIRECT GROQ
-============================================================ */
+// ============================================================
+// IMAGE GENERATION (Cloudflare Workers AI)
+// ============================================================
 
-async function proxyGroq(
-  body,
-
-  env
-) {
-  const model =
-    body?.model ||
-
-    'llama-3.3-70b-versatile';
-
-  const result =
-    await callGroqModel(
-      model,
-
-      body,
-
-      env,
-
-      {}
-    );
-
-  return jsonResponse({
-    success: true,
-
-    text:
-      result.data.text,
-
-    provider:
-      'groq',
-
-    model,
-  });
-}
-
-/* ============================================================
-   DIRECT GEMINI
-============================================================ */
-
-async function proxyGemini(
-  body,
-
-  env
-) {
-  const model =
-    body?.model ||
-
-    'gemini-2.5-flash';
-
-  const result =
-    await callGeminiModel(
-      model,
-
-      body,
-
-      env,
-
-      {
-        thinking:
-          body?.thinking !==
-          false,
-      }
-    );
-
-  return jsonResponse({
-    success: true,
-
-    text:
-      result.data.text,
-
-    thoughtSummary:
-      result.data.thoughtSummary,
-
-    provider:
-      'gemini',
-
-    model,
-  });
-}
-
-/* ============================================================
-   DIRECT GITHUB
-============================================================ */
-
-async function proxyGitHub(
-  body,
-
-  env
-) {
-  const model =
-    body?.model;
-
-  if (
-    !model
-  ) {
-    return errorResponse(
-      'A model is required.',
-
-      400
-    );
+async function generateImage(body, env) {
+  if (!env.AI || typeof env.AI.run !== 'function') {
+    return errorResponse('Image generation is unavailable – Cloudflare AI binding not configured.', 503);
   }
 
-  const result =
-    await callGitHubModel(
-      model,
+  const prompt = String(body?.prompt || '').trim();
+  if (!prompt) return errorResponse('A prompt is required.', 400);
+  if (prompt.length > MAX_IMAGE_PROMPT_LENGTH) return errorResponse('Prompt too long.', 400);
 
-      body,
-
-      env,
-
-      {}
-    );
-
-  return jsonResponse({
-    success: true,
-
-    text:
-      result.data.text,
-
-    provider:
-      'github',
-
-    model,
-  });
-}
-
-/* ============================================================
-   IMAGE GENERATION
-============================================================ */
-
-async function generateImage(
-  body,
-
-  env
-) {
-  if (
-    !env.AI ||
-    typeof env.AI.run !==
-      'function'
-  ) {
-    return errorResponse(
-      'Image generation is unavailable because the Cloudflare AI binding is not configured.',
-
-      503
-    );
-  }
-
-  const prompt =
-    String(
-      body?.prompt ||
-        ''
-    ).trim();
-
-  if (
-    !prompt
-  ) {
-    return errorResponse(
-      'An image prompt is required.',
-
-      400
-    );
-  }
-
-  if (
-    prompt.length >
-    MAX_IMAGE_PROMPT_LENGTH
-  ) {
-    return errorResponse(
-      'The image prompt is too long.',
-
-      400
-    );
-  }
-
-  const models =
-    getImageModels(
-      env
-    );
-
+  const models = getImageModels(env);
   const failures = [];
+  const startedAt = Date.now();
 
-  const startedAt =
-    Date.now();
-
-  for (
-    let index = 0;
-
-    index < models.length;
-
-    index++
-  ) {
-    const model =
-      models[index];
-
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
     try {
-      console.log(
-        `[StudentNija Image] Trying ${model}`
-      );
-
-      const input = {
-        prompt,
-
-        ...(body?.options ||
-          {}),
-      };
-
-      const result =
-        await runWorkersAIWithTimeout(
-          env.AI,
-
-          model,
-
-          input,
-
-          IMAGE_TIMEOUT
-        );
-
-      const normalized =
-        await normalizeImageResult(
-          result
-        );
-
-      if (
-        !normalized
-      ) {
-        throw new Error(
-          'The image model returned no image data.'
-        );
-      }
-
-      return new Response(
-        normalized.bytes,
-
-        {
-          status: 200,
-
-          headers: {
-            ...corsHeaders,
-
-            'Content-Type':
-              normalized.contentType ||
-              'image/jpeg',
-
-            'Cache-Control':
-              'no-store',
-
-            'X-StudentNija-Provider':
-              'cloudflare-workers-ai',
-
-            'X-StudentNija-Model':
-              model,
-
-            'X-StudentNija-Fallback':
-              String(
-                index > 0
-              ),
-
-            'X-StudentNija-Duration':
-              String(
-                Date.now() -
-                  startedAt
-              ),
-          },
-        }
-      );
-    } catch (error) {
-      console.warn(
-        `[StudentNija Image Fallback] ${model} failed:`,
-
-        error?.message ||
-          error
-      );
-
-      failures.push({
-        model,
-
-        reason:
-          classifyFailure(
-            error
-          ),
+      console.log(`[StudentNija Image] Trying ${model}`);
+      const result = await runWorkersAIWithTimeout(env.AI, model, { prompt }, IMAGE_TIMEOUT);
+      const normalized = await normalizeImageResult(result);
+      if (!normalized) throw new Error('No image data returned.');
+      return new Response(normalized.bytes, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': normalized.contentType || 'image/jpeg',
+          'Cache-Control': 'no-store',
+          'X-StudentNija-Provider': 'cloudflare-workers-ai',
+          'X-StudentNija-Model': model,
+          'X-StudentNija-Fallback': String(i > 0),
+          'X-StudentNija-Duration': String(Date.now() - startedAt),
+        },
       });
+    } catch (error) {
+      console.warn(`[StudentNija Image Fallback] ${model} failed:`, error?.message || error);
+      failures.push({ model, reason: classifyFailure(error) });
     }
   }
 
   return jsonResponse(
-    {
-      success: false,
-
-      error:
-        'StudentNija could not generate the image right now.',
-
-      fallbackExhausted: true,
-
-      failures,
-    },
-
+    { success: false, error: 'Image generation failed after trying all models.', fallbackExhausted: true, failures },
     503
   );
 }
 
-/* ============================================================
-   WORKERS AI TIMEOUT
-============================================================ */
-
-async function runWorkersAIWithTimeout(
-  ai,
-
-  model,
-
-  input,
-
-  timeout
-) {
+// Helper: run Workers AI with timeout
+async function runWorkersAIWithTimeout(ai, model, input, timeout) {
   let timer;
-
-  const timeoutPromise =
-    new Promise(
-      (_, reject) => {
-        timer =
-          setTimeout(
-            () => {
-              reject(
-                new Error(
-                  'Image generation timed out.'
-                )
-              );
-            },
-
-            timeout
-          );
-      }
-    );
-
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Image generation timed out.')), timeout);
+  });
   try {
-    return await Promise.race([
-      ai.run(
-        model,
-
-        input
-      ),
-
-      timeoutPromise,
-    ]);
+    return await Promise.race([ai.run(model, input), timeoutPromise]);
   } finally {
-    clearTimeout(
-      timer
-    );
+    clearTimeout(timer);
   }
 }
 
-/* ============================================================
-   IMAGE NORMALIZATION
-============================================================ */
-
-async function normalizeImageResult(
-  result
-) {
-  if (
-    !result
-  ) {
-    return null;
+// Helper: normalize image result to { bytes, contentType }
+async function normalizeImageResult(result) {
+  if (!result) return null;
+  if (result instanceof ArrayBuffer || result instanceof Uint8Array) {
+    return { bytes: result, contentType: 'image/jpeg' };
   }
-
-  if (
-    result instanceof ArrayBuffer
-  ) {
-    return {
-      bytes:
-        result,
-
-      contentType:
-        'image/jpeg',
-    };
+  if (typeof result.image === 'string') {
+    return { bytes: base64ToArrayBuffer(result.image), contentType: 'image/jpeg' };
   }
-
-  if (
-    result instanceof Uint8Array
-  ) {
-    return {
-      bytes:
-        result,
-
-      contentType:
-        'image/jpeg',
-    };
+  if (result.image instanceof ArrayBuffer || result.image instanceof Uint8Array) {
+    return { bytes: result.image, contentType: 'image/jpeg' };
   }
-
-  if (
-    typeof result.image ===
-    'string'
-  ) {
-    return {
-      bytes:
-        base64ToArrayBuffer(
-          result.image
-        ),
-
-      contentType:
-        'image/jpeg',
-    };
+  if (typeof result.data === 'string') {
+    return { bytes: base64ToArrayBuffer(result.data), contentType: 'image/png' };
   }
-
-  if (
-    result.image instanceof ArrayBuffer
-  ) {
-    return {
-      bytes:
-        result.image,
-
-      contentType:
-        'image/jpeg',
-    };
+  if (result.data instanceof ArrayBuffer || result.data instanceof Uint8Array) {
+    return { bytes: result.data, contentType: 'image/png' };
   }
-
-  if (
-    result.image instanceof Uint8Array
-  ) {
-    return {
-      bytes:
-        result.image,
-
-      contentType:
-        'image/jpeg',
-    };
+  // ReadableStream
+  if (result.body && typeof result.body.getReader === 'function') {
+    return { bytes: await streamToArrayBuffer(result.body), contentType: 'image/png' };
   }
-
-  if (
-    typeof result.data ===
-    'string'
-  ) {
-    return {
-      bytes:
-        base64ToArrayBuffer(
-          result.data
-        ),
-
-      contentType:
-        'image/png',
-    };
+  if (typeof result.getReader === 'function') {
+    return { bytes: await streamToArrayBuffer(result), contentType: 'image/png' };
   }
-
-  if (
-    result.data instanceof ArrayBuffer
-  ) {
-    return {
-      bytes:
-        result.data,
-
-      contentType:
-        'image/png',
-    };
-  }
-
-  if (
-    result.data instanceof Uint8Array
-  ) {
-    return {
-      bytes:
-        result.data,
-
-      contentType:
-        'image/png',
-    };
-  }
-
-  if (
-    result.body &&
-    typeof result.body.getReader ===
-      'function'
-  ) {
-    return {
-      bytes:
-        await streamToArrayBuffer(
-          result.body
-        ),
-
-      contentType:
-        'image/png',
-    };
-  }
-
-  if (
-    typeof result.getReader ===
-      'function'
-  ) {
-    return {
-      bytes:
-        await streamToArrayBuffer(
-          result
-        ),
-
-      contentType:
-        'image/png',
-    };
-  }
-
   return null;
 }
 
-/* ============================================================
-   WEB SEARCH
-============================================================ */
+// ============================================================
+// WEB SEARCH (Tavily)
+// ============================================================
 
-async function webSearch(
-  body,
+async function webSearch(body, env) {
+  if (!env.TAVILY_API_KEY) return errorResponse('Web search unavailable – Tavily API key missing.', 503);
+  const query = String(body?.query || '').trim();
+  if (!query) return errorResponse('Search query required.', 400);
+  if (query.length > 500) return errorResponse('Query too long.', 400);
 
-  env
-) {
-  if (
-    !env.TAVILY_API_KEY
-  ) {
-    return errorResponse(
-      'Web search is unavailable.',
+  const searchDepth = body?.search_depth === 'advanced' ? 'advanced' : 'basic';
+  const maxResults = Math.min(Math.max(Number(body?.max_results) || 5, 1), 10);
 
-      503
-    );
-  }
+  const response = await fetchWithTimeout('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: env.TAVILY_API_KEY,
+      query,
+      search_depth: searchDepth,
+      max_results: maxResults,
+      include_answer: true,
+      include_raw_content: false,
+      include_images: false,
+    }),
+  }, SEARCH_TIMEOUT);
 
-  const query =
-    String(
-      body?.query ||
-        ''
-    ).trim();
+  if (!response.ok) throw await createProviderError(response, 'Web Search');
+  const data = await response.json();
+  const results = Array.isArray(data?.results) ? data.results.map(item => ({
+    title: String(item?.title || ''),
+    url: String(item?.url || ''),
+    content: String(item?.content || ''),
+    score: Number(item?.score || 0),
+    publishedDate: item?.published_date || null,
+    source: getHostname(item?.url),
+  })) : [];
 
-  if (
-    !query
-  ) {
-    return errorResponse(
-      'A search query is required.',
-
-      400
-    );
-  }
-
-  if (
-    query.length >
-    500
-  ) {
-    return errorResponse(
-      'The search query is too long.',
-
-      400
-    );
-  }
-
-  const searchDepth =
-    body?.search_depth ===
-    'advanced'
-      ? 'advanced'
-      : 'basic';
-
-  const maxResults =
-    Math.min(
-      Math.max(
-        Number(
-          body?.max_results
-        ) || 5,
-
-        1
-      ),
-
-      10
-    );
-
-  const response =
-    await fetchWithTimeout(
-      'https://api.tavily.com/search',
-
-      {
-        method: 'POST',
-
-        headers: {
-          'Content-Type':
-            'application/json',
-        },
-
-        body:
-          JSON.stringify({
-            api_key:
-              env.TAVILY_API_KEY,
-
-            query,
-
-            search_depth:
-              searchDepth,
-
-            max_results:
-              maxResults,
-
-            include_answer:
-              true,
-
-            include_raw_content:
-              false,
-
-            include_images:
-              false,
-          }),
-      },
-
-      SEARCH_TIMEOUT
-    );
-
-  if (
-    !response.ok
-  ) {
-    throw await createProviderError(
-      response,
-
-      'Web Search'
-    );
-  }
-
-  const data =
-    await response.json();
-
-  const results =
-    Array.isArray(
-      data?.results
-    )
-      ? data.results.map(
-          (item) => ({
-            title:
-              String(
-                item?.title ||
-                  ''
-              ),
-
-            url:
-              String(
-                item?.url ||
-                  ''
-              ),
-
-            content:
-              String(
-                item?.content ||
-                  ''
-              ),
-
-            score:
-              Number(
-                item?.score ||
-                  0
-              ),
-
-            publishedDate:
-              item?.published_date ||
-              null,
-
-            source:
-              getHostname(
-                item?.url
-              ),
-          })
-        )
-      : [];
-
-  return jsonResponse({
-    success: true,
-
-    query,
-
-    answer:
-      data?.answer ||
-      null,
-
-    results,
-  });
+  return jsonResponse({ success: true, query, answer: data?.answer || null, results });
 }
 
-/* ============================================================
-   URL FETCHING
-============================================================ */
+// ============================================================
+// URL FETCHING
+// ============================================================
 
-async function fetchWebPage(
-  body
-) {
-  const targetUrl =
-    String(
-      body?.url ||
-        ''
-    ).trim();
-
-  if (
-    !targetUrl
-  ) {
-    return errorResponse(
-      'A URL is required.',
-
-      400
-    );
-  }
-
+async function fetchWebPage(body) {
+  const targetUrl = String(body?.url || '').trim();
+  if (!targetUrl) return errorResponse('URL required.', 400);
   let parsedUrl;
+  try { parsedUrl = new URL(targetUrl); } catch { return errorResponse('Invalid URL.', 400); }
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) return errorResponse('Only HTTP/HTTPS URLs allowed.', 400);
 
-  try {
-    parsedUrl =
-      new URL(
-        targetUrl
-      );
-  } catch {
-    return errorResponse(
-      'Invalid URL.',
+  const response = await fetchWithTimeout(parsedUrl.toString(), {
+    method: 'GET',
+    headers: {
+      'User-Agent': 'StudentNijaAI/1.0 Educational Research Bot',
+      Accept: 'text/html,application/xhtml+xml,text/plain,application/pdf',
+    },
+  }, FETCH_TIMEOUT);
 
-      400
-    );
+  if (!response.ok) return jsonResponse({ success: false, error: 'Could not fetch URL.' }, response.status);
+  const contentType = response.headers.get('content-type') || '';
+  const rawText = await response.text();
+  let cleanText = rawText;
+  if (contentType.includes('text/html') || contentType.includes('application/xhtml+xml')) {
+    cleanText = extractReadableText(rawText);
   }
-
-  if (
-    ![
-      'http:',
-      'https:',
-    ].includes(
-      parsedUrl.protocol
-    )
-  ) {
-    return errorResponse(
-      'Only HTTP and HTTPS URLs are supported.',
-
-      400
-    );
-  }
-
-  const response =
-    await fetchWithTimeout(
-      parsedUrl.toString(),
-
-      {
-        method: 'GET',
-
-        headers: {
-          'User-Agent':
-            'StudentNijaAI/1.0 Educational Research Bot',
-
-          Accept:
-            'text/html,application/xhtml+xml,text/plain,application/pdf',
-        },
-      },
-
-      FETCH_TIMEOUT
-    );
-
-  if (
-    !response.ok
-  ) {
-    return jsonResponse(
-      {
-        success: false,
-
-        error:
-          'The website could not be read right now.',
-      },
-
-      response.status
-    );
-  }
-
-  const contentType =
-    response.headers.get(
-      'content-type'
-    ) || '';
-
-  const rawText =
-    await response.text();
-
-  let cleanText =
-    rawText;
-
-  if (
-    contentType.includes(
-      'text/html'
-    ) ||
-    contentType.includes(
-      'application/xhtml+xml'
-    )
-  ) {
-    cleanText =
-      extractReadableText(
-        rawText
-      );
-  }
-
-  cleanText =
-    cleanText
-      .replace(
-        /\s+/g,
-
-        ' '
-      )
-      .trim()
-      .slice(
-        0,
-
-        MAX_TEXT_LENGTH
-      );
-
+  cleanText = cleanText.replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT_LENGTH);
   return jsonResponse({
     success: true,
-
-    url:
-      parsedUrl.toString(),
-
-    title:
-      extractTitle(
-        rawText
-      ),
-
+    url: parsedUrl.toString(),
+    title: extractTitle(rawText),
     contentType,
-
-    content:
-      cleanText,
+    content: cleanText,
   });
 }
 
-/* ============================================================
-   GEMINI CONTENT CONVERSION
-============================================================ */
+// ============================================================
+// DIRECT PROXY ENDPOINTS
+// ============================================================
 
-function convertToGeminiContents(
-  messages = [],
-
-  files = []
-) {
-  const contents =
-    [];
-
-  for (
-    const message of
-      messages
-  ) {
-    if (
-      !message ||
-      !message.role
-    ) {
-      continue;
-    }
-
-    const role =
-      message.role ===
-      'assistant'
-        ? 'model'
-        : 'user';
-
-    const parts =
-      [];
-
-    if (
-      typeof message.content ===
-      'string'
-    ) {
-      if (
-        message.content.trim()
-      ) {
-        parts.push({
-          text:
-            message.content,
-        });
-      }
-    }
-
-    if (
-      Array.isArray(
-        message.content
-      )
-    ) {
-      for (
-        const part of
-          message.content
-      ) {
-        if (
-          part?.type ===
-          'text'
-        ) {
-          parts.push({
-            text:
-              String(
-                part.text ||
-                  ''
-              ),
-          });
-        }
-
-        if (
-          part?.type ===
-          'image_url'
-        ) {
-          const imageUrl =
-            part.image_url
-              ?.url;
-
-          const inlineData =
-            parseDataUrl(
-              imageUrl
-            );
-
-          if (
-            inlineData
-          ) {
-            parts.push({
-              inlineData,
-            });
-          }
-        }
-      }
-    }
-
-    if (
-      parts.length
-    ) {
-      contents.push({
-        role,
-
-        parts,
-      });
-    }
-  }
-
-  for (
-    const file of
-      files
-  ) {
-    if (
-      !file ||
-      !file.mimeType ||
-      !file.data
-    ) {
-      continue;
-    }
-
-    contents.push({
-      role: 'user',
-
-      parts: [
-        {
-          inlineData: {
-            mimeType:
-              file.mimeType,
-
-            data:
-              stripDataUrlPrefix(
-                file.data
-              ),
-          },
-        },
-      ],
-    });
-  }
-
-  return contents;
+async function proxyGroq(body, env) {
+  const model = body?.model || 'llama-3.3-70b-versatile';
+  const result = await callGroqModel(model, body, env, {});
+  return jsonResponse({ success: true, text: result.data.text, provider: 'groq', model });
 }
 
-/* ============================================================
-   OPENAI MESSAGE NORMALIZATION
-============================================================ */
-
-function normalizeOpenAIMessages(
-  messages = [],
-
-  system
-) {
-  const normalized =
-    [];
-
-  if (
-    system
-  ) {
-    normalized.push({
-      role: 'system',
-
-      content:
-        String(
-          system
-        ),
-    });
-  }
-
-  for (
-    const message of
-      messages
-  ) {
-    if (
-      !message ||
-      !message.role
-    ) {
-      continue;
-    }
-
-    normalized.push({
-      role:
-        message.role,
-
-      content:
-        normalizeMessageContent(
-          message.content
-        ),
-    });
-  }
-
-  return normalized;
+async function proxyGemini(body, env) {
+  const model = body?.model || 'gemini-2.5-flash';
+  const result = await callGeminiModel(model, body, env, { thinking: body?.thinking !== false });
+  return jsonResponse({ success: true, text: result.data.text, thoughtSummary: result.data.thoughtSummary, provider: 'gemini', model });
 }
 
-/* ============================================================
-   GITHUB MESSAGE NORMALIZATION
-============================================================ */
-
-function normalizeGitHubMessages(
-  messages = [],
-
-  system
-) {
-  const normalized =
-    [];
-
-  if (
-    system
-  ) {
-    normalized.push({
-      role: 'system',
-
-      content:
-        String(
-          system
-        ),
-    });
-  }
-
-  for (
-    const message of
-      messages
-  ) {
-    if (
-      !message ||
-      !message.role
-    ) {
-      continue;
-    }
-
-    if (
-      typeof message.content ===
-      'string'
-    ) {
-      normalized.push({
-        role:
-          message.role,
-
-        content:
-          message.content,
-      });
-
-      continue;
-    }
-
-    if (
-      Array.isArray(
-        message.content
-      )
-    ) {
-      const parts =
-        [];
-
-      for (
-        const part of
-          message.content
-      ) {
-        if (
-          part?.type ===
-          'text'
-        ) {
-          parts.push({
-            type: 'text',
-
-            text:
-              String(
-                part.text ||
-                  ''
-              ),
-          });
-        }
-
-        if (
-          part?.type ===
-          'image_url'
-        ) {
-          const imageUrl =
-            part.image_url
-              ?.url;
-
-          if (
-            imageUrl
-          ) {
-            parts.push({
-              type:
-                'image_url',
-
-              image_url: {
-                url:
-                  imageUrl,
-              },
-            });
-          }
-        }
-      }
-
-      normalized.push({
-        role:
-          message.role,
-
-        content:
-          parts,
-      });
-    }
-  }
-
-  return normalized;
+async function proxyGitHub(body, env) {
+  const model = body?.model;
+  if (!model) return errorResponse('Model required.', 400);
+  const result = await callGitHubModel(model, body, env, {});
+  return jsonResponse({ success: true, text: result.data.text, provider: 'github', model });
 }
 
-function normalizeMessageContent(
-  content
-) {
-  if (
-    typeof content ===
-    'string'
-  ) {
-    return content;
-  }
+// ============================================================
+// UTILITY FUNCTIONS
+// ============================================================
 
-  if (
-    Array.isArray(
-      content
-    )
-  ) {
-    return content
-      .map(
-        (part) => {
-          if (
-            part?.type ===
-            'text'
-          ) {
-            return String(
-              part.text ||
-                ''
-            );
-          }
-
-          return '';
-        }
-      )
-      .join(
-        '\n'
-      );
-  }
-
-  return normalizeText(
-    content
-  );
-}
-
-/* ============================================================
-   GEMINI RESPONSE EXTRACTION
-============================================================ */
-
-function extractGeminiResponse(
-  data
-) {
-  let text =
-    '';
-
-  const thoughtParts =
-    [];
-
-  const candidates =
-    Array.isArray(
-      data?.candidates
-    )
-      ? data.candidates
-      : [];
-
-  for (
-    const candidate of
-      candidates
-  ) {
-    const parts =
-      candidate
-        ?.content
-        ?.parts ||
-      [];
-
-    for (
-      const part of
-        parts
-    ) {
-      if (
-        typeof part?.text !==
-        'string'
-      ) {
-        continue;
-      }
-
-      if (
-        part.thought ===
-        true
-      ) {
-        thoughtParts.push(
-          part.text
-        );
-      } else {
-        text +=
-          part.text;
-      }
-    }
-  }
-
-  return {
-    text:
-      text.trim(),
-
-    thoughtSummary:
-      thoughtParts
-        .join(
-          '\n\n'
-        )
-        .trim() ||
-      null,
-  };
-}
-
-/* ============================================================
-   OPENAI RESPONSE EXTRACTION
-============================================================ */
-
-function extractOpenAIText(
-  data
-) {
-  const choice =
-    data?.choices?.[0];
-
-  const content =
-    choice?.message
-      ?.content;
-
-  if (
-    typeof content ===
-    'string'
-  ) {
-    return content.trim();
-  }
-
-  if (
-    Array.isArray(
-      content
-    )
-  ) {
-    return content
-      .map(
-        (part) => {
-          if (
-            typeof part ===
-            'string'
-          ) {
-            return part;
-          }
-
-          return String(
-            part?.text ||
-              ''
-          );
-        }
-      )
-      .join(
-        ''
-      )
-      .trim();
-  }
-
-  return '';
-}
-
-/* ============================================================
-   THOUGHT SUMMARY
-============================================================ */
-
-function createFallbackThoughtSummary(
-  body,
-
-  options = {}
-) {
-  const userText =
-    extractLatestUserText(
-      body?.messages
-    );
-
-  const mode =
-    options.capability ||
-    body?.mode ||
-    'chat';
-
-  const summary =
-    [];
-
-  if (
-    userText
-  ) {
-    summary.push(
-      `Understanding the request: "${truncate(
-        userText,
-
-        220
-      )}"`
-    );
-  }
-
-  if (
-    mode ===
-    'thinking'
-  ) {
-    summary.push(
-      'Breaking the question into its important parts and identifying the main reasoning path.'
-    );
-
-    summary.push(
-      'Checking the relevant details and evaluating the best answer before responding.'
-    );
-  }
-
-  if (
-    mode ===
-    'expert'
-  ) {
-    summary.push(
-      'Analyzing the topic in greater depth and organizing the explanation for clarity and accuracy.'
-    );
-  }
-
-  if (
-    mode ===
-    'vision'
-  ) {
-    summary.push(
-      'Examining the supplied visual content and identifying the information most relevant to the request.'
-    );
-  }
-
-  return summary.join(
-    '\n\n'
-  );
-}
-
-/* ============================================================
-   SYSTEM PROMPT
-============================================================ */
-
-function buildSystemPrompt(
-  existing,
-
-  addition
-) {
-  return [
-    existing
-      ? String(
-          existing
-        ).trim()
-      : '',
-
-    String(
-      addition ||
-        ''
-    ).trim(),
-  ]
-    .filter(Boolean)
-    .join(
-      '\n\n'
-    );
-}
-
-/* ============================================================
-   MODE NORMALIZATION
-============================================================ */
-
-function normalizeMode(
-  mode
-) {
-  const value =
-    String(
-      mode ||
-        'chat'
-    )
-      .toLowerCase()
-      .trim();
-
-  if (
-    [
-      'think',
-      'thinking',
-    ].includes(
-      value
-    )
-  ) {
-    return 'think';
-  }
-
-  if (
-    value ===
-    'expert'
-  ) {
-    return 'expert';
-  }
-
-  if (
-    value ===
-    'vision'
-  ) {
-    return 'vision';
-  }
-
+function normalizeMode(mode) {
+  const m = String(mode || 'chat').toLowerCase().trim();
+  if (['think', 'thinking'].includes(m)) return 'think';
+  if (m === 'expert') return 'expert';
+  if (m === 'vision') return 'vision';
   return 'chat';
 }
 
-/* ============================================================
-   LATEST USER TEXT
-============================================================ */
-
-function extractLatestUserText(
-  messages = []
-) {
-  for (
-    let i =
-      messages.length -
-      1;
-
-    i >= 0;
-
-    i--
-  ) {
-    const message =
-      messages[i];
-
-    if (
-      message?.role !==
-      'user'
-    ) {
-      continue;
-    }
-
-    if (
-      typeof message.content ===
-      'string'
-    ) {
-      return message.content;
-    }
-
-    if (
-      Array.isArray(
-        message.content
-      )
-    ) {
-      return message.content
-        .filter(
-          (part) =>
-            part?.type ===
-            'text'
-        )
-        .map(
-          (part) =>
-            String(
-              part.text ||
-                ''
-            )
-        )
-        .join(
-          ' '
-        );
-    }
-  }
-
-  return '';
+function buildSystemPrompt(existing, addition) {
+  return [existing ? String(existing).trim() : '', String(addition || '').trim()].filter(Boolean).join('\n\n');
 }
 
-/* ============================================================
-   HTML EXTRACTION
-============================================================ */
-
-function extractReadableText(
-  html
-) {
-  return html
-    .replace(
-      /<(script|style|noscript|svg|iframe|canvas|nav|footer|header|aside)[^>]*>[\s\S]*?<\/\1>/gi,
-
-      ' '
-    )
-    .replace(
-      /<!--[\s\S]*?-->/g,
-
-      ' '
-    )
-    .replace(
-      /<[^>]+>/g,
-
-      ' '
-    )
-    .replace(
-      /&nbsp;/gi,
-
-      ' '
-    )
-    .replace(
-      /&amp;/gi,
-
-      '&'
-    )
-    .replace(
-      /&quot;/gi,
-
-      '"'
-    )
-    .replace(
-      /&#39;/gi,
-
-      "'"
-    )
-    .replace(
-      /&lt;/gi,
-
-      '<'
-    )
-    .replace(
-      /&gt;/gi,
-
-      '>'
-    );
-}
-
-function extractTitle(
-  html
-) {
-  const match =
-    String(
-      html ||
-        ''
-    ).match(
-      /<title[^>]*>([\s\S]*?)<\/title>/i
-    );
-
-  return match
-    ? match[1]
-        .replace(
-          /\s+/g,
-
-          ' '
-        )
-        .trim()
-    : null;
-}
-
-/* ============================================================
-   HOSTNAME
-============================================================ */
-
-function getHostname(
-  url
-) {
-  try {
-    return new URL(
-      url
-    ).hostname;
-  } catch {
+function normalizeText(value) {
+  if (typeof value === 'string') return value.trim();
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    if (typeof value.text === 'string') return value.text.trim();
+    if (typeof value.content === 'string') return value.content.trim();
+    if (Array.isArray(value.parts)) return value.parts.map(p => typeof p === 'string' ? p : p?.text || '').join('').trim();
     return '';
   }
+  return String(value).trim();
 }
 
-/* ============================================================
-   STRING HELPERS
-============================================================ */
-
-function normalizeText(
-  value
-) {
-  if (
-    typeof value ===
-    'string'
-  ) {
-    return value.trim();
-  }
-
-  if (
-    value ===
-    null ||
-    value ===
-    undefined
-  ) {
-    return '';
-  }
-
-  if (
-    typeof value ===
-    'object'
-  ) {
-    if (
-      typeof value.text ===
-      'string'
-    ) {
-      return value.text.trim();
-    }
-
-    if (
-      typeof value.content ===
-      'string'
-    ) {
-      return value.content.trim();
-    }
-
-    if (
-      Array.isArray(
-        value.parts
-      )
-    ) {
-      return value.parts
-        .map(
-          (part) =>
-            typeof part ===
-            'string'
-              ? part
-              : part?.text ||
-                ''
-        )
-        .join('')
-        .trim();
-    }
-
-    return '';
-  }
-
-  return String(
-    value
-  ).trim();
+function formatThoughtDuration(ms) {
+  if (ms < 1000) return 'less than a second';
+  const sec = Math.round(ms / 1000);
+  return `${sec} second${sec === 1 ? '' : 's'}`;
 }
 
-function truncate(
-  value,
-
-  max
-) {
-  const text =
-    String(
-      value ||
-        ''
-    );
-
-  return text.length >
-    max
-    ? text.slice(
-        0,
-
-        max
-      ) + '…'
-    : text;
-}
-
-function formatThoughtDuration(
-  milliseconds
-) {
-  if (
-    milliseconds <
-    1000
-  ) {
-    return 'less than a second';
-  }
-
-  const seconds =
-    Math.round(
-      milliseconds /
-        1000
-    );
-
-  return `${seconds} second${
-    seconds === 1
-      ? ''
-      : 's'
-  }`;
-}
-
-/* ============================================================
-   DATA URL
-============================================================ */
-
-function parseDataUrl(
-  value
-) {
-  if (
-    typeof value !==
-    'string'
-  ) {
-    return null;
-  }
-
-  const match =
-    value.match(
-      /^data:([^;]+);base64,(.+)$/s
-    );
-
-  if (
-    !match
-  ) {
-    return null;
-  }
-
-  return {
-    mimeType:
-      match[1],
-
-    data:
-      match[2],
-  };
-}
-
-function stripDataUrlPrefix(
-  value
-) {
-  if (
-    typeof value !==
-    'string'
-  ) {
-    return value;
-  }
-
-  return value.replace(
-    /^data:[^;]+;base64,/,
-
-    ''
-  );
-}
-
-/* ============================================================
-   STREAM
-============================================================ */
-
-async function streamToArrayBuffer(
-  stream
-) {
-  const reader =
-    stream.getReader();
-
-  const chunks =
-    [];
-
-  let total =
-    0;
-
-  while (
-    true
-  ) {
-    const {
-      done,
-
-      value,
-    } =
-      await reader.read();
-
-    if (
-      done
-    ) {
-      break;
-    }
-
-    if (
-      value
-    ) {
-      chunks.push(
-        value
-      );
-
-      total +=
-        value.byteLength;
-    }
-  }
-
-  const result =
-    new Uint8Array(
-      total
-    );
-
-  let offset =
-    0;
-
-  for (
-    const chunk of
-      chunks
-  ) {
-    result.set(
-      chunk,
-
-      offset
-    );
-
-    offset +=
-      chunk.byteLength;
-  }
-
-  return result.buffer;
-}
-
-/* ============================================================
-   BASE64
-============================================================ */
-
-function base64ToArrayBuffer(
-  base64
-) {
-  const binary =
-    atob(
-      base64
-    );
-
-  const bytes =
-    new Uint8Array(
-      binary.length
-    );
-
-  for (
-    let i = 0;
-
-    i <
-    binary.length;
-
-    i++
-  ) {
-    bytes[i] =
-      binary.charCodeAt(
-        i
-      );
-  }
-
-  return bytes.buffer;
-}
-
-/* ============================================================
-   TIMEOUT FETCH
-============================================================ */
-
-async function fetchWithTimeout(
-  url,
-
-  options = {},
-
-  timeout = 30000
-) {
-  const controller =
-    new AbortController();
-
-  const timer =
-    setTimeout(
-      () =>
-        controller.abort(),
-
-      timeout
-    );
-
-  try {
-    return await fetch(
-      url,
-
-      {
-        ...options,
-
-        signal:
-          controller.signal,
-      }
-    );
-  } catch (error) {
-    if (
-      error?.name ===
-      'AbortError'
-    ) {
-      throw new Error(
-        'Request timed out.'
-      );
-    }
-
-    throw error;
-  } finally {
-    clearTimeout(
-      timer
-    );
-  }
-}
-
-/* ============================================================
-   PROVIDER ERROR
-============================================================ */
-
-async function createProviderError(
-  response,
-
-  provider
-) {
-  let message =
-    `${provider} request failed with HTTP ${response.status}`;
-
-  try {
-    const text =
-      await response.text();
-
-    console.error(
-      `${provider} raw error:`,
-
-      text
-    );
-
-    if (
-      text
-    ) {
-      message +=
-        `: ${text.slice(
-          0,
-
-          1000
-        )}`;
-    }
-  } catch (error) {
-    console.error(
-      'Could not read provider error:',
-
-      error
-    );
-  }
-
-  const error =
-    new Error(
-      message
-    );
-
-  error.status =
-    response.status;
-
-  return error;
-}
-
-/* ============================================================
-   FAILURE CLASSIFICATION
-============================================================ */
-
-function classifyFailure(
-  error
-) {
-  const status =
-    error?.status;
-
-  if (
-    status ===
-    429
-  ) {
-    return 'rate_limit';
-  }
-
-  if (
-    status ===
-      401 ||
-    status ===
-      403
-  ) {
-    return 'authentication_or_permission';
-  }
-
-  if (
-    status ===
-      408 ||
-    status ===
-      504
-  ) {
-    return 'timeout';
-  }
-
-  if (
-    status >=
-    500
-  ) {
-    return 'provider_unavailable';
-  }
-
-  if (
-    String(
-      error?.message ||
-        ''
-    )
-      .toLowerCase()
-      .includes(
-        'timeout'
-      )
-  ) {
-    return 'timeout';
-  }
-
+function classifyFailure(error) {
+  const status = error?.status;
+  if (status === 429) return 'rate_limit';
+  if (status === 401 || status === 403) return 'authentication';
+  if (status === 408 || status === 504) return 'timeout';
+  if (status >= 500) return 'provider_unavailable';
+  if (String(error?.message || '').toLowerCase().includes('timeout')) return 'timeout';
   return 'provider_error';
 }
 
-/* ============================================================
-   JSON RESPONSE
-============================================================ */
-
-function jsonResponse(
-  data,
-
-  status = 200
-) {
-  return new Response(
-    JSON.stringify(
-      data
-    ),
-
-    {
-      status,
-
-      headers: {
-        ...corsHeaders,
-
-        'Content-Type':
-          'application/json',
-      },
+// ---------- Gemini content conversion ----------
+function convertToGeminiContents(messages = [], files = []) {
+  const contents = [];
+  for (const msg of messages) {
+    if (!msg || !msg.role) continue;
+    const role = msg.role === 'assistant' ? 'model' : 'user';
+    const parts = [];
+    if (typeof msg.content === 'string' && msg.content.trim()) parts.push({ text: msg.content });
+    if (Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (part?.type === 'text') parts.push({ text: String(part.text || '') });
+        if (part?.type === 'image_url') {
+          const inline = parseDataUrl(part.image_url?.url);
+          if (inline) parts.push({ inlineData: inline });
+        }
+      }
     }
-  );
+    if (parts.length) contents.push({ role, parts });
+  }
+  for (const file of files) {
+    if (!file?.mimeType || !file?.data) continue;
+    contents.push({ role: 'user', parts: [{ inlineData: { mimeType: file.mimeType, data: stripDataUrlPrefix(file.data) } }] });
+  }
+  return contents;
 }
 
-/* ============================================================
-   ERROR RESPONSE
-============================================================ */
+// ---------- OpenAPI message normalization ----------
+function normalizeOpenAIMessages(messages = [], system) {
+  const result = [];
+  if (system) result.push({ role: 'system', content: String(system) });
+  for (const msg of messages) {
+    if (!msg?.role) continue;
+    result.push({ role: msg.role, content: normalizeMessageContent(msg.content) });
+  }
+  return result;
+}
 
-function errorResponse(
-  message,
+function normalizeGitHubMessages(messages = [], system) {
+  const result = [];
+  if (system) result.push({ role: 'system', content: String(system) });
+  for (const msg of messages) {
+    if (!msg?.role) continue;
+    if (typeof msg.content === 'string') { result.push({ role: msg.role, content: msg.content }); continue; }
+    if (Array.isArray(msg.content)) {
+      const parts = [];
+      for (const part of msg.content) {
+        if (part?.type === 'text') parts.push({ type: 'text', text: String(part.text || '') });
+        if (part?.type === 'image_url' && part.image_url?.url) {
+          parts.push({ type: 'image_url', image_url: { url: part.image_url.url } });
+        }
+      }
+      result.push({ role: msg.role, content: parts });
+    }
+  }
+  return result;
+}
 
-  status = 500
-) {
-  return jsonResponse(
-    {
-      success: false,
+function normalizeMessageContent(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.filter(p => p?.type === 'text').map(p => String(p.text || '')).join('\n');
+  return normalizeText(content);
+}
 
-      error:
-        message,
-    },
+// ---------- Response extraction ----------
+function extractOpenAIText(data) {
+  const choice = data?.choices?.[0];
+  const content = choice?.message?.content;
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) return content.map(p => typeof p === 'string' ? p : String(p?.text || '')).join('').trim();
+  return '';
+}
 
-    status
-  );
+function extractGeminiResponse(data) {
+  let text = '', thoughtParts = [];
+  const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+  for (const candidate of candidates) {
+    const parts = candidate?.content?.parts || [];
+    for (const part of parts) {
+      if (typeof part?.text !== 'string') continue;
+      if (part.thought === true) thoughtParts.push(part.text);
+      else text += part.text;
+    }
+  }
+  return { text: text.trim(), thoughtSummary: thoughtParts.join('\n\n').trim() || null };
+}
+
+// ---------- Fallback thought summary for providers without built-in thinking ----------
+function createFallbackThoughtSummary(body, options = {}) {
+  const userText = extractLatestUserText(body?.messages);
+  const mode = options.capability || body?.mode || 'chat';
+  const points = [];
+  if (userText) points.push(`Understanding the request: "${truncate(userText, 220)}"`);
+  if (mode === 'thinking') points.push('Breaking the problem into logical steps and verifying the approach.');
+  if (mode === 'expert') points.push('Analyzing in depth and structuring a precise explanation.');
+  if (mode === 'vision') points.push('Examining the visual content and extracting relevant details.');
+  points.push('Checking the answer for accuracy and clarity before responding.');
+  return points.join('\n\n');
+}
+
+function extractLatestUserText(messages = []) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg?.role !== 'user') continue;
+    if (typeof msg.content === 'string') return msg.content;
+    if (Array.isArray(msg.content)) return msg.content.filter(p => p?.type === 'text').map(p => String(p.text || '')).join(' ');
+  }
+  return '';
+}
+
+// ---------- HTML extraction ----------
+function extractReadableText(html) {
+  return html
+    .replace(/<(script|style|noscript|svg|iframe|canvas|nav|footer|header|aside)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function extractTitle(html) {
+  const match = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? match[1].replace(/\s+/g, ' ').trim() : null;
+}
+
+function getHostname(url) {
+  try { return new URL(url).hostname; } catch { return ''; }
+}
+
+function truncate(str, max) {
+  const s = String(str || '');
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
+
+// ---------- Data URL helpers ----------
+function parseDataUrl(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/^data:([^;]+);base64,(.+)$/s);
+  if (!match) return null;
+  return { mimeType: match[1], data: match[2] };
+}
+
+function stripDataUrlPrefix(value) {
+  if (typeof value !== 'string') return value;
+  return value.replace(/^data:[^;]+;base64,/, '');
+}
+
+// ---------- Stream to ArrayBuffer ----------
+async function streamToArrayBuffer(stream) {
+  const reader = stream.getReader();
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) { chunks.push(value); total += value.byteLength; }
+  }
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result.buffer;
+}
+
+// ---------- Base64 ----------
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+// ---------- Fetch with timeout ----------
+async function fetchWithTimeout(url, options = {}, timeout = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('Request timed out.');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ---------- Provider error helper ----------
+async function createProviderError(response, provider) {
+  let message = `${provider} request failed with HTTP ${response.status}`;
+  try {
+    const text = await response.text();
+    console.error(`${provider} raw error:`, text);
+    if (text) message += `: ${text.slice(0, 1000)}`;
+  } catch {}
+  const error = new Error(message);
+  error.status = response.status;
+  return error;
+}
+
+// ---------- JSON / error responses ----------
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+function errorResponse(message, status = 500) {
+  return jsonResponse({ success: false, error: message }, status);
 }
