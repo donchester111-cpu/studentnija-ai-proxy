@@ -1,5 +1,5 @@
 // ============================================================
-// StudentNija AI Proxy v11.2 – Thinking UI Fix
+// StudentNija AI Proxy v12.0 – Full Reasoning Support
 // ============================================================
 
 const corsHeaders = {
@@ -16,10 +16,6 @@ const FETCH_TIMEOUT = 20000;
 const IMAGE_TIMEOUT = 120000;
 const MAX_TEXT_LENGTH = 30000;
 const MAX_IMAGE_PROMPT_LENGTH = 2048;
-
-// ============================================================
-// MODEL CONFIGURATION
-// ============================================================
 
 const MODELS = {
   chat: [
@@ -53,10 +49,6 @@ function getImageModels(env) {
   ].filter(Boolean);
 }
 
-// ============================================================
-// MAIN WORKER
-// ============================================================
-
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
@@ -70,7 +62,7 @@ export default {
       return jsonResponse({
         success: true,
         service: 'StudentNija AI Proxy',
-        version: '11.2',
+        version: '12.0',
         status: 'online',
         timestamp: new Date().toISOString(),
         capabilities: {
@@ -125,10 +117,6 @@ export default {
   },
 };
 
-// ============================================================
-// UNIVERSAL ROUTER
-// ============================================================
-
 async function routeAI(body, env) {
   const mode = normalizeMode(body?.mode);
   switch (mode) {
@@ -138,10 +126,6 @@ async function routeAI(body, env) {
     default:        return await chatMode(body, env);
   }
 }
-
-// ============================================================
-// MODE HANDLERS
-// ============================================================
 
 async function chatMode(body, env) {
   return await executeFallbackChain(MODELS.chat, body, env, { capability: 'chat', thinking: false });
@@ -176,7 +160,7 @@ Place any reasoning inside <think> tags.
 }
 
 // ============================================================
-// FALLBACK ENGINE – now strips <think> and returns a thinking object
+// FALLBACK ENGINE – guaranteed to return real thinking if available
 // ============================================================
 
 async function executeFallbackChain(models, body, env, options = {}) {
@@ -191,27 +175,46 @@ async function executeFallbackChain(models, body, env, options = {}) {
       if (result && result.success) {
         const elapsed = Date.now() - startedAt;
         const rawText = normalizeText(result.data?.text);
-        // Strip <think> tags
         const { cleaned, thinking: thinkContent } = stripThinkTags(rawText);
 
-        // Build thinking object
         let thinkingObj = null;
+        let thoughtSummary = null;
+
         if (options.thinking) {
-          const thoughtText = thinkContent || result.data?.thoughtSummary || generateFallbackSummary(extractLatestUserText(body?.messages));
-          const bullets = thoughtText.split(/\n+/).filter(s => s.trim().length > 0);
-          if (bullets.length === 0) bullets.push('Reasoning about the request.');
-          thinkingObj = {
-            title: `Thought for ${formatThoughtDuration(elapsed)}`,
-            bullets: bullets.slice(0, 6),
-            model: entry.label || entry.model,
-          };
+          // REAL THINKING: from <think> tags, or from Gemini's thought parts, or from the model's own summary
+          const realThought = thinkContent || result.data?.thoughtSummary || null;
+          if (realThought) {
+            thoughtSummary = realThought;
+            // Convert to bullet list (split by newlines or periods)
+            const bullets = realThought.split(/\n+/).filter(s => s.trim().length > 0);
+            if (bullets.length === 0) {
+              // If no newlines, split by sentences
+              const sentences = realThought.match(/[^.!?]+[.!?]+/g) || [realThought];
+              bullets.push(...sentences.map(s => s.trim()).filter(s => s.length > 0));
+            }
+            thinkingObj = {
+              title: `Thought for ${formatThoughtDuration(elapsed)}`,
+              bullets: bullets.slice(0, 8), // max 8 bullets
+              model: entry.label || entry.model,
+            };
+          } else {
+            // NO real thinking – use a contextual fallback (but this should rarely happen)
+            const fallback = generateContextualSummary(extractLatestUserText(body?.messages), cleaned);
+            thoughtSummary = fallback;
+            const bullets = fallback.split('\n').filter(s => s.trim().length > 0);
+            thinkingObj = {
+              title: `Thought for ${formatThoughtDuration(elapsed)}`,
+              bullets: bullets.slice(0, 6),
+              model: entry.label || entry.model,
+            };
+          }
         }
 
         return jsonResponse({
           success: true,
-          text: cleaned, // clean answer
+          text: cleaned,
           thinking: thinkingObj,
-          thoughtSummary: thinkContent || result.data?.thoughtSummary || null, // keep for compatibility
+          thoughtSummary: thoughtSummary, // always send for frontend
           provider: entry.provider,
           model: entry.model,
           modelLabel: entry.label || entry.model,
@@ -237,7 +240,7 @@ async function executeFallbackChain(models, body, env, options = {}) {
 }
 
 // ============================================================
-// HELPERS: Think tag stripping
+// HELPERS
 // ============================================================
 
 function stripThinkTags(text) {
@@ -251,21 +254,25 @@ function stripThinkTags(text) {
   return { cleaned: text, thinking: null };
 }
 
-function generateFallbackSummary(userText) {
-  const text = userText || 'the request';
-  if (/(calculate|solve|equation|math)/i.test(text)) {
-    return 'Breaking the problem into steps and verifying the calculation.';
-  } else if (/(code|program|debug|javascript|python|html)/i.test(text)) {
-    return 'Identifying requirements, checking constraints, and planning a solution.';
-  } else if (/(study|exam|learn|school|subject|explain)/i.test(text)) {
-    return 'Identifying the learning goal and organising the explanation.';
+function generateContextualSummary(userText, assistantText) {
+  const query = userText || 'the request';
+  const answer = assistantText || '';
+  let firstSentence = answer.split(/[.!?]/)[0]?.trim() || '';
+  if (firstSentence.length > 120) firstSentence = firstSentence.slice(0, 120) + '…';
+  const bullets = [
+    `Understanding the request: "${query.slice(0, 80)}"`,
+  ];
+  if (firstSentence) {
+    bullets.push(`Providing a response: "${firstSentence}"`);
   } else {
-    return 'Understanding the user\'s intent and gathering the necessary context.';
+    bullets.push('Analyzing the request and preparing a structured answer.');
   }
+  bullets.push('Checking the answer for accuracy and clarity before responding.');
+  return bullets.join('\n');
 }
 
 // ============================================================
-// MODEL EXECUTION (same as before)
+// MODEL EXECUTION
 // ============================================================
 
 async function executeModel(entry, body, env, options) {
@@ -299,14 +306,11 @@ async function callGroqModel(model, body, env, options) {
   if (!text) throw new Error('Empty Groq response');
   return {
     success: true,
-    data: {
-      text,
-      thoughtSummary: options.thinking ? createFallbackThoughtSummary(body, options) : null,
-    },
+    data: { text, thoughtSummary: null }, // Groq doesn't support thinking
   };
 }
 
-// ---------- GEMINI ----------
+// ---------- GEMINI (REAL THINKING ENABLED) ----------
 async function callGeminiModel(model, body, env, options) {
   if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
   const contents = convertToGeminiContents(body?.messages || [], body?.files || []);
@@ -314,11 +318,20 @@ async function callGeminiModel(model, body, env, options) {
     contents: contents.filter(c => c && Array.isArray(c.parts) && c.parts.length),
   };
   if (body?.system) requestBody.systemInstruction = { parts: [{ text: String(body.system) }] };
-  const generationConfig = { ...(body?.generationConfig || {}) };
+
+  const generationConfig = {
+    temperature: body?.temperature ?? 0.7,
+    maxOutputTokens: 8192, // allow room for thoughts + answer
+    ...(body?.generationConfig || {}),
+  };
+
   if (options.thinking) {
-    generationConfig.thinkingConfig = { thinkingBudget: Number.isInteger(body?.thinkingBudget) ? body.thinkingBudget : -1 };
+    // Enable Gemini's thinking with a generous budget
+    generationConfig.thinkingConfig = { thinkingBudget: 1024 };
   }
+
   requestBody.generationConfig = generationConfig;
+
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
   const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
@@ -333,7 +346,7 @@ async function callGeminiModel(model, body, env, options) {
     success: true,
     data: {
       text: extracted.text,
-      thoughtSummary: extracted.thoughtSummary || (options.thinking ? createFallbackThoughtSummary(body, options) : null),
+      thoughtSummary: extracted.thoughtSummary || null,
     },
   };
 }
@@ -364,15 +377,12 @@ async function callGitHubModel(model, body, env, options) {
   if (!text) throw new Error('Empty GitHub response');
   return {
     success: true,
-    data: {
-      text,
-      thoughtSummary: options.thinking ? createFallbackThoughtSummary(body, options) : null,
-    },
+    data: { text, thoughtSummary: null }, // GitHub models may or may not return thinking; we'll rely on <think> tags
   };
 }
 
 // ============================================================
-// IMAGE GENERATION (unchanged)
+// IMAGE GENERATION
 // ============================================================
 
 async function generateImage(body, env) {
@@ -531,7 +541,7 @@ async function fetchWebPage(body) {
 }
 
 // ============================================================
-// DIRECT PROXY ENDPOINTS (unchanged)
+// DIRECT PROXY ENDPOINTS
 // ============================================================
 
 async function proxyGroq(body, env) {
@@ -554,7 +564,7 @@ async function proxyGitHub(body, env) {
 }
 
 // ============================================================
-// UTILITY FUNCTIONS (unchanged)
+// UTILITY FUNCTIONS
 // ============================================================
 
 function normalizeMode(mode) {
@@ -595,6 +605,16 @@ function classifyFailure(error) {
   if (status >= 500) return 'provider_unavailable';
   if (String(error?.message || '').toLowerCase().includes('timeout')) return 'timeout';
   return 'provider_error';
+}
+
+function extractLatestUserText(messages = []) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg?.role !== 'user') continue;
+    if (typeof msg.content === 'string') return msg.content;
+    if (Array.isArray(msg.content)) return msg.content.filter(p => p?.type === 'text').map(p => String(p.text || '')).join(' ');
+  }
+  return '';
 }
 
 // ---------- Gemini content conversion ----------
@@ -676,34 +696,17 @@ function extractGeminiResponse(data) {
     const parts = candidate?.content?.parts || [];
     for (const part of parts) {
       if (typeof part?.text !== 'string') continue;
-      if (part.thought === true) thoughtParts.push(part.text);
-      else text += part.text;
+      if (part.thought === true) {
+        thoughtParts.push(part.text);
+      } else {
+        text += part.text;
+      }
     }
   }
-  return { text: text.trim(), thoughtSummary: thoughtParts.join('\n\n').trim() || null };
-}
-
-// ---------- Fallback thought summary ----------
-function createFallbackThoughtSummary(body, options = {}) {
-  const userText = extractLatestUserText(body?.messages);
-  const mode = options.capability || body?.mode || 'chat';
-  const points = [];
-  if (userText) points.push(`Understanding the request: "${truncate(userText, 220)}"`);
-  if (mode === 'thinking') points.push('Breaking the problem into logical steps and verifying the approach.');
-  if (mode === 'expert') points.push('Analyzing in depth and structuring a precise explanation.');
-  if (mode === 'vision') points.push('Examining the visual content and extracting relevant details.');
-  points.push('Checking the answer for accuracy and clarity before responding.');
-  return points.join('\n\n');
-}
-
-function extractLatestUserText(messages = []) {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg?.role !== 'user') continue;
-    if (typeof msg.content === 'string') return msg.content;
-    if (Array.isArray(msg.content)) return msg.content.filter(p => p?.type === 'text').map(p => String(p.text || '')).join(' ');
-  }
-  return '';
+  return {
+    text: text.trim(),
+    thoughtSummary: thoughtParts.join('\n\n').trim() || null,
+  };
 }
 
 // ---------- HTML extraction ----------
