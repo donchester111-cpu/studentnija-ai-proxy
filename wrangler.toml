@@ -2,7 +2,7 @@
 # StudentNija AI Proxy – Cloudflare Worker Configuration
 # ============================================================
 
-name = "studentnija-proxy"
+name = "studentnija-proxy-v2"
 main = "src/index.js"
 compatibility_date = "2026-07-23"
 
