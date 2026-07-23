@@ -1,5 +1,5 @@
 // ============================================================
-// StudentNija AI Proxy v12.0 – Full Reasoning Support
+// StudentNija AI Proxy v13.0 – Extended Fallbacks + JSON Reasoning
 // ============================================================
 
 const corsHeaders = {
@@ -17,27 +17,53 @@ const IMAGE_TIMEOUT = 120000;
 const MAX_TEXT_LENGTH = 30000;
 const MAX_IMAGE_PROMPT_LENGTH = 2048;
 
+// ============================================================
+// MODEL CONFIGURATION – Extended fallbacks for all modes
+// ============================================================
+
 const MODELS = {
   chat: [
     { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
-    { provider: 'groq', model: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant' },
+    { provider: 'groq', model: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B' },
+    { provider: 'groq', model: 'gemma2-9b-it', label: 'Gemma 2 9B' },
+    { provider: 'groq', model: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
+    { provider: 'gemini', model: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { provider: 'gemini', model: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' },
+    { provider: 'gemini', model: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+    { provider: 'github', model: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { provider: 'github', model: 'Phi-4', label: 'Phi-4' },
+    { provider: 'github', model: 'DeepSeek-R1', label: 'DeepSeek R1' },
   ],
+
   think: [
+    // Prioritise reasoning-capable models
     { provider: 'github', model: 'DeepSeek-R1', label: 'DeepSeek R1' },
     { provider: 'github', model: 'Phi-4', label: 'Phi-4 (Reasoning)' },
     { provider: 'gemini', model: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
     { provider: 'gemini', model: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' },
+    { provider: 'gemini', model: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
     { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Fallback)' },
+    { provider: 'groq', model: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Fallback)' },
+    { provider: 'groq', model: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B (Fallback)' },
   ],
+
   expert: [
     { provider: 'gemini', model: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
     { provider: 'gemini', model: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' },
+    { provider: 'gemini', model: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
     { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
+    { provider: 'groq', model: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
+    { provider: 'github', model: 'DeepSeek-R1', label: 'DeepSeek R1' },
+    { provider: 'github', model: 'Phi-4', label: 'Phi-4' },
   ],
+
   vision: [
     { provider: 'gemini', model: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash Vision' },
     { provider: 'gemini', model: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite Vision' },
+    { provider: 'gemini', model: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash Vision' },
     { provider: 'github', model: 'gpt-4o-mini', label: 'GPT-4o Mini Vision' },
+    { provider: 'github', model: 'Phi-4', label: 'Phi-4 Vision' },
+    { provider: 'groq', model: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Fallback)' },
   ],
 };
 
@@ -48,6 +74,10 @@ function getImageModels(env) {
     env.IMAGE_MODEL_FINAL || '@cf/stabilityai/stable-diffusion-xl-base-1.0',
   ].filter(Boolean);
 }
+
+// ============================================================
+// MAIN WORKER
+// ============================================================
 
 export default {
   async fetch(request, env) {
@@ -62,7 +92,7 @@ export default {
       return jsonResponse({
         success: true,
         service: 'StudentNija AI Proxy',
-        version: '12.0',
+        version: '13.0',
         status: 'online',
         timestamp: new Date().toISOString(),
         capabilities: {
@@ -117,6 +147,10 @@ export default {
   },
 };
 
+// ============================================================
+// UNIVERSAL ROUTER
+// ============================================================
+
 async function routeAI(body, env) {
   const mode = normalizeMode(body?.mode);
   switch (mode) {
@@ -127,6 +161,10 @@ async function routeAI(body, env) {
   }
 }
 
+// ============================================================
+// MODE HANDLERS
+// ============================================================
+
 async function chatMode(body, env) {
   return await executeFallbackChain(MODELS.chat, body, env, { capability: 'chat', thinking: false });
 }
@@ -134,8 +172,10 @@ async function chatMode(body, env) {
 async function thinkMode(body, env) {
   const enhancedSystem = buildSystemPrompt(body?.system, `
 You are in StudentNija Think Mode. Provide a clear, accurate, and well‑reasoned final answer.
-If you need to show your reasoning, place it inside <think> tags.
-Do not include the reasoning outside those tags.
+You MUST respond with a JSON object containing two keys: "reasoning" and "answer".
+- "reasoning": your step‑by‑step thought process (concise but detailed).
+- "answer": the final answer to the user.
+Output ONLY the JSON object, nothing else.
 `);
   const newBody = { ...body, system: enhancedSystem };
   return await executeFallbackChain(MODELS.think, newBody, env, { capability: 'thinking', thinking: true });
@@ -160,7 +200,7 @@ Place any reasoning inside <think> tags.
 }
 
 // ============================================================
-// FALLBACK ENGINE – guaranteed to return real thinking if available
+// FALLBACK ENGINE – with JSON parsing for Think mode
 // ============================================================
 
 async function executeFallbackChain(models, body, env, options = {}) {
@@ -174,47 +214,47 @@ async function executeFallbackChain(models, body, env, options = {}) {
       const result = await executeModel(entry, body, env, options);
       if (result && result.success) {
         const elapsed = Date.now() - startedAt;
-        const rawText = normalizeText(result.data?.text);
-        const { cleaned, thinking: thinkContent } = stripThinkTags(rawText);
-
-        let thinkingObj = null;
+        let rawText = normalizeText(result.data?.text);
+        let cleaned = rawText;
         let thoughtSummary = null;
 
+        // If this is Think mode, try to parse JSON
         if (options.thinking) {
-          // REAL THINKING: from <think> tags, or from Gemini's thought parts, or from the model's own summary
-          const realThought = thinkContent || result.data?.thoughtSummary || null;
-          if (realThought) {
-            thoughtSummary = realThought;
-            // Convert to bullet list (split by newlines or periods)
-            const bullets = realThought.split(/\n+/).filter(s => s.trim().length > 0);
-            if (bullets.length === 0) {
-              // If no newlines, split by sentences
-              const sentences = realThought.match(/[^.!?]+[.!?]+/g) || [realThought];
-              bullets.push(...sentences.map(s => s.trim()).filter(s => s.length > 0));
-            }
-            thinkingObj = {
-              title: `Thought for ${formatThoughtDuration(elapsed)}`,
-              bullets: bullets.slice(0, 8), // max 8 bullets
-              model: entry.label || entry.model,
-            };
+          const parsed = parseJSONFromText(rawText);
+          if (parsed && parsed.reasoning && parsed.answer) {
+            thoughtSummary = parsed.reasoning;
+            cleaned = parsed.answer;
           } else {
-            // NO real thinking – use a contextual fallback (but this should rarely happen)
-            const fallback = generateContextualSummary(extractLatestUserText(body?.messages), cleaned);
-            thoughtSummary = fallback;
-            const bullets = fallback.split('\n').filter(s => s.trim().length > 0);
-            thinkingObj = {
-              title: `Thought for ${formatThoughtDuration(elapsed)}`,
-              bullets: bullets.slice(0, 6),
-              model: entry.label || entry.model,
-            };
+            // Fallback: try <think> tags
+            const { cleaned: c, thinking: t } = stripThinkTags(rawText);
+            cleaned = c;
+            if (t) thoughtSummary = t;
           }
+        } else {
+          // For other modes, just strip <think> tags if any
+          const { cleaned: c, thinking: t } = stripThinkTags(rawText);
+          cleaned = c;
+          thoughtSummary = t || result.data?.thoughtSummary || null;
+        }
+
+        // Build the thinking object for the UI
+        let thinkingObj = null;
+        if (options.thinking) {
+          const thoughtText = thoughtSummary || generateContextualSummary(extractLatestUserText(body?.messages), cleaned);
+          const bullets = thoughtText.split(/\n+/).filter(s => s.trim().length > 0);
+          if (bullets.length === 0) bullets.push('Reasoning about the request.');
+          thinkingObj = {
+            title: `Thought for ${formatThoughtDuration(elapsed)}`,
+            bullets: bullets.slice(0, 8),
+            model: entry.label || entry.model,
+          };
         }
 
         return jsonResponse({
           success: true,
           text: cleaned,
           thinking: thinkingObj,
-          thoughtSummary: thoughtSummary, // always send for frontend
+          thoughtSummary: thoughtSummary,
           provider: entry.provider,
           model: entry.model,
           modelLabel: entry.label || entry.model,
@@ -240,8 +280,28 @@ async function executeFallbackChain(models, body, env, options = {}) {
 }
 
 // ============================================================
-// HELPERS
+// HELPERS: JSON parsing, think tag stripping, contextual summary
 // ============================================================
+
+function parseJSONFromText(text) {
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && parsed.reasoning && parsed.answer) {
+      return parsed;
+    }
+  } catch (e) {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        if (parsed && typeof parsed === 'object' && parsed.reasoning && parsed.answer) {
+          return parsed;
+        }
+      } catch (e2) {}
+    }
+  }
+  return null;
+}
 
 function stripThinkTags(text) {
   if (typeof text !== 'string') return { cleaned: text, thinking: null };
@@ -272,7 +332,7 @@ function generateContextualSummary(userText, assistantText) {
 }
 
 // ============================================================
-// MODEL EXECUTION
+// MODEL EXECUTION (GROQ, GEMINI, GITHUB)
 // ============================================================
 
 async function executeModel(entry, body, env, options) {
@@ -306,11 +366,11 @@ async function callGroqModel(model, body, env, options) {
   if (!text) throw new Error('Empty Groq response');
   return {
     success: true,
-    data: { text, thoughtSummary: null }, // Groq doesn't support thinking
+    data: { text, thoughtSummary: null },
   };
 }
 
-// ---------- GEMINI (REAL THINKING ENABLED) ----------
+// ---------- GEMINI ----------
 async function callGeminiModel(model, body, env, options) {
   if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
   const contents = convertToGeminiContents(body?.messages || [], body?.files || []);
@@ -318,20 +378,15 @@ async function callGeminiModel(model, body, env, options) {
     contents: contents.filter(c => c && Array.isArray(c.parts) && c.parts.length),
   };
   if (body?.system) requestBody.systemInstruction = { parts: [{ text: String(body.system) }] };
-
   const generationConfig = {
     temperature: body?.temperature ?? 0.7,
-    maxOutputTokens: 8192, // allow room for thoughts + answer
+    maxOutputTokens: 8192,
     ...(body?.generationConfig || {}),
   };
-
   if (options.thinking) {
-    // Enable Gemini's thinking with a generous budget
     generationConfig.thinkingConfig = { thinkingBudget: 1024 };
   }
-
   requestBody.generationConfig = generationConfig;
-
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
   const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
@@ -377,12 +432,12 @@ async function callGitHubModel(model, body, env, options) {
   if (!text) throw new Error('Empty GitHub response');
   return {
     success: true,
-    data: { text, thoughtSummary: null }, // GitHub models may or may not return thinking; we'll rely on <think> tags
+    data: { text, thoughtSummary: null },
   };
 }
 
 // ============================================================
-// IMAGE GENERATION
+// IMAGE GENERATION (unchanged)
 // ============================================================
 
 async function generateImage(body, env) {
@@ -541,7 +596,7 @@ async function fetchWebPage(body) {
 }
 
 // ============================================================
-// DIRECT PROXY ENDPOINTS
+// DIRECT PROXY ENDPOINTS (unchanged)
 // ============================================================
 
 async function proxyGroq(body, env) {
