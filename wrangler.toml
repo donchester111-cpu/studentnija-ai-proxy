@@ -4,7 +4,7 @@
 
 name = "studentnija-proxy"
 main = "src/index.js"
-compatibility_date = "2026-07-21"
+compatibility_date = "2026-07-23"
 
 # Optional: enable more recent JavaScript features
 compatibility_flags = ["nodejs_compat"]
